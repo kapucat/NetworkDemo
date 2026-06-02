@@ -27,6 +27,12 @@ public class GrappleController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         rb.freezeRotation = true;
+
+        if (lineRenderer != null)
+        {
+            lineRenderer.enabled = false;
+            lineRenderer.positionCount = 0;
+        }
     }
 
     private void Update()
@@ -85,6 +91,15 @@ public class GrappleController : MonoBehaviour
         {
             lineRenderer.enabled = true;
             lineRenderer.positionCount = 2;
+            // ロープの始点をカメラの前に少しオフセットして設定
+            Vector3 ropeStartPosition =
+                cameraTransform.position
+                + cameraTransform.forward * 0.4f
+                + cameraTransform.right * 0.25f
+                - cameraTransform.up * 0.2f;
+
+            lineRenderer.SetPosition(0, ropeStartPosition);
+            lineRenderer.SetPosition(1, grapplePoint);
         }
     }
 
@@ -151,6 +166,7 @@ public class GrappleController : MonoBehaviour
         if (lineRenderer != null)
         {
             lineRenderer.enabled = false;
+            lineRenderer.positionCount = 0;
         }
     }
 
@@ -161,7 +177,13 @@ public class GrappleController : MonoBehaviour
             return;
         }
 
-        lineRenderer.SetPosition(0, cameraTransform.position);
+        Vector3 ropeStartPosition =
+            cameraTransform.position
+            + cameraTransform.forward * 0.4f
+            + cameraTransform.right * 0.25f
+            - cameraTransform.up * 0.2f;
+
+        lineRenderer.SetPosition(0, ropeStartPosition);
         lineRenderer.SetPosition(1, grapplePoint);
     }
 }
