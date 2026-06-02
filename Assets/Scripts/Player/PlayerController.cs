@@ -8,15 +8,19 @@ public class PlayerController : MonoBehaviour
 
     private Rigidbody rb;
     private bool isGrounded;
-
+    private GrappleController grappleController;
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
+        grappleController = GetComponent<GrappleController>();
     }
-
     private void Update()
     {
-        Move();
+        if (grappleController == null || !grappleController.IsGrappling)
+        {
+            Move();
+        }
 
         if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
         {
