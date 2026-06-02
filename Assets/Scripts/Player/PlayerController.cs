@@ -8,31 +8,53 @@ public class PlayerController : MonoBehaviour
 
     private Rigidbody rb;
     private bool isGrounded;
+
     private GrappleController grappleController;
+    private WallRunController wallRunController;
+
+    private float xInput;
+    private float zInput;
+    private bool jumpRequested;
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
         rb.freezeRotation = true;
+
         grappleController = GetComponent<GrappleController>();
+        wallRunController = GetComponent<WallRunController>();
     }
+
     private void Update()
     {
-        if (grappleController == null || !grappleController.IsGrappling)
+        xInput = Input.GetAxisRaw("Horizontal");
+        zInput = Input.GetAxisRaw("Vertical");
+
+        if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
+        {
+            jumpRequested = true;
+        }
+    }
+
+    private void FixedUpdate()
+    {
+        bool isGrappling = grappleController != null && grappleController.IsGrappling;
+        bool isWallRunning = wallRunController != null && wallRunController.IsWallRunning;
+
+        if (!isGrappling && !isWallRunning)
         {
             Move();
         }
 
-        if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
+        if (jumpRequested)
         {
             Jump();
+            jumpRequested = false;
         }
     }
 
     private void Move()
     {
-        float x = Input.GetAxisRaw("Horizontal");
-        float z = Input.GetAxisRaw("Vertical");
-
         Vector3 forward = cameraTransform.forward;
         Vector3 right = cameraTransform.right;
 
@@ -42,7 +64,7 @@ public class PlayerController : MonoBehaviour
         forward.Normalize();
         right.Normalize();
 
-        Vector3 moveDirection = forward * z + right * x;
+        Vector3 moveDirection = forward * zInput + right * xInput;
         Vector3 velocity = moveDirection.normalized * moveSpeed;
 
         rb.velocity = new Vector3(velocity.x, rb.velocity.y, velocity.z);
