@@ -8,6 +8,9 @@ public class ResultUI : MonoBehaviour
 
     private void Start()
     {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
         clearTimeText.text = "Time: " + GameResultData.ClearTime.ToString("F2");
         deathCountText.text = "Death: " + GameResultData.DeathCount;
     }
