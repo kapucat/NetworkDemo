@@ -16,6 +16,16 @@ public class PlayerController : MonoBehaviour
     [Header("References")]
     [SerializeField] private Transform cameraTransform;
 
+
+
+    [Header("Gravity")]
+    [SerializeField] private float fallMultiplier = 3.0f;
+    [SerializeField] private float lowJumpMultiplier = 2.0f;
+
+    [Header("Air Control")]
+    [SerializeField] private float airFriction = 0.8f;
+
+
     private Rigidbody rb;
     private bool isGrounded;
 
@@ -25,6 +35,9 @@ public class PlayerController : MonoBehaviour
     private float xInput;
     private float zInput;
     private bool jumpRequested;
+
+
+
 
     private void Awake()
     {
@@ -62,6 +75,8 @@ public class PlayerController : MonoBehaviour
             jumpRequested = false;
         }
 
+        ApplyExtraGravity(isWallRunning);
+        ApplyAirFriction(isGrappling, isWallRunning);
         LimitAbsoluteSpeed();
     }
 
@@ -130,4 +145,47 @@ public class PlayerController : MonoBehaviour
     {
         isGrounded = false;
     }
+
+
+
+    private void ApplyExtraGravity(bool isWallRunning)
+    {
+        if (isWallRunning)
+        {
+            return;
+        }
+
+        if (rb.velocity.y < 0f)
+        {
+            rb.AddForce(
+                Vector3.up * Physics.gravity.y * (fallMultiplier - 1f),
+                ForceMode.Acceleration
+            );
+        }
+        else if (rb.velocity.y > 0f && !Input.GetKey(KeyCode.Space))
+        {
+            rb.AddForce(
+                Vector3.up * Physics.gravity.y * (lowJumpMultiplier - 1f),
+                ForceMode.Acceleration
+            );
+        }
+    }
+
+    private void ApplyAirFriction(bool isGrappling, bool isWallRunning)
+    {
+        if (isGrounded || isGrappling || isWallRunning)
+        {
+            return;
+        }
+
+        Vector3 horizontalVelocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+
+        rb.AddForce(
+            -horizontalVelocity * airFriction,
+            ForceMode.Acceleration
+        );
+    }
+
+
+
 }
