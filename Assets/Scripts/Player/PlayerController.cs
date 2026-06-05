@@ -2,8 +2,18 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    [SerializeField] private float moveSpeed = 8f;
+    [Header("Move")]
+    [SerializeField] private float groundAcceleration = 35f;
+    [SerializeField] private float airAcceleration = 15f;
+    [SerializeField] private float maxGroundControlSpeed = 18f;
+    [SerializeField] private float maxAirControlSpeed = 35f;
+    [SerializeField] private float groundFriction = 8f;
+    [SerializeField] private float absoluteMaxSpeed = 50f;
+
+    [Header("Jump")]
     [SerializeField] private float jumpPower = 7f;
+
+    [Header("References")]
     [SerializeField] private Transform cameraTransform;
 
     private Rigidbody rb;
@@ -51,6 +61,8 @@ public class PlayerController : MonoBehaviour
             Jump();
             jumpRequested = false;
         }
+
+        LimitAbsoluteSpeed();
     }
 
     private void Move()
@@ -64,10 +76,31 @@ public class PlayerController : MonoBehaviour
         forward.Normalize();
         right.Normalize();
 
-        Vector3 moveDirection = forward * zInput + right * xInput;
-        Vector3 velocity = moveDirection.normalized * moveSpeed;
+        Vector3 inputDirection = forward * zInput + right * xInput;
 
-        rb.velocity = new Vector3(velocity.x, rb.velocity.y, velocity.z);
+        Vector3 horizontalVelocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+
+        if (inputDirection.sqrMagnitude > 0.01f)
+        {
+            inputDirection.Normalize();
+
+            float acceleration = isGrounded ? groundAcceleration : airAcceleration;
+            float maxControlSpeed = isGrounded ? maxGroundControlSpeed : maxAirControlSpeed;
+
+            float speedInInputDirection = Vector3.Dot(horizontalVelocity, inputDirection);
+
+            // ‚»‚Ì•ûŒü‚É‚Ü‚¾‰Á‘¬‚Å‚«‚é‚¾‚¯—Í‚ğ‘«‚·
+            // ‚·‚Å‚É‘¬‚¢ê‡‚Í‘¬“x‚ğÁ‚³‚¸Aã‘‚«‚à‚µ‚È‚¢
+            if (speedInInputDirection < maxControlSpeed)
+            {
+                rb.AddForce(inputDirection * acceleration, ForceMode.Acceleration);
+            }
+        }
+        else if (isGrounded)
+        {
+            // “ü—Í‚µ‚Ä‚¢‚È‚¢‚¾‚¯’nã‚Å­‚µŒ¸‘¬
+            rb.AddForce(-horizontalVelocity * groundFriction, ForceMode.Acceleration);
+        }
     }
 
     private void Jump()
@@ -75,6 +108,17 @@ public class PlayerController : MonoBehaviour
         rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
         rb.AddForce(Vector3.up * jumpPower, ForceMode.Impulse);
         isGrounded = false;
+    }
+
+    private void LimitAbsoluteSpeed()
+    {
+        Vector3 horizontalVelocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
+
+        if (horizontalVelocity.magnitude > absoluteMaxSpeed)
+        {
+            Vector3 limitedVelocity = horizontalVelocity.normalized * absoluteMaxSpeed;
+            rb.velocity = new Vector3(limitedVelocity.x, rb.velocity.y, limitedVelocity.z);
+        }
     }
 
     private void OnCollisionStay(Collision collision)
