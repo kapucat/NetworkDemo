@@ -23,6 +23,11 @@ public class SceneLoader : MonoBehaviour
         SceneManager.LoadScene("RankingScene");
     }
 
+    public void LoadMenu()
+    {
+        SceneManager.LoadScene("MenuScene");
+    }
+
     public void QuitGame()
     {
         Application.Quit();
