@@ -93,6 +93,21 @@ func scoresHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if score.StageID <= 0 {
+		http.Error(w, "stage_id is invalid", http.StatusBadRequest)
+		return
+	}
+
+	if score.ClearTime <= 0 {
+		http.Error(w, "clear_time is invalid", http.StatusBadRequest)
+		return
+	}
+
+	if score.DeathCount < 0 {
+		http.Error(w, "death_count is invalid", http.StatusBadRequest)
+		return
+	}
+
 	_, err = db.Exec(
 		`
 		INSERT INTO scores (player_name, stage_id, clear_time, death_count)
@@ -143,24 +158,25 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-rows, err := db.Query(
-	`
-	SELECT player_name, clear_time, death_count
-	FROM (
-		SELECT DISTINCT ON (player_name)
-			player_name,
-			clear_time,
-			death_count,
-			created_at
-		FROM scores
-		WHERE stage_id = $1
-		ORDER BY player_name, clear_time ASC, created_at ASC
-	) AS best_scores
-	ORDER BY clear_time ASC
-	LIMIT 10
-	`,
-	stageID,
-)
+	rows, err := db.Query(
+		`
+		SELECT player_name, clear_time, death_count
+		FROM (
+			SELECT DISTINCT ON (player_name)
+				player_name,
+				clear_time,
+				death_count,
+				created_at
+			FROM scores
+			WHERE stage_id = $1
+			ORDER BY player_name, clear_time ASC, created_at ASC
+		) AS best_scores
+		ORDER BY clear_time ASC
+		LIMIT 10
+		`,
+		stageID,
+	)
+
 	if err != nil {
 		log.Println("ranking query failed:", err)
 		http.Error(w, "ranking query failed", http.StatusInternalServerError)
