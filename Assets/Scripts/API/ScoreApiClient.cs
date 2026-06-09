@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -8,6 +9,7 @@ public class ScoreApiClient : MonoBehaviour
     [SerializeField] private string baseUrl = "http://localhost:8080";
     [SerializeField] private bool checkHealthOnStart = false;
     [SerializeField] private bool sendScoreOnStart = false;
+    [SerializeField] private TextMeshProUGUI bestTimeText;
 
     [System.Serializable]
     private class ScoreRequest
@@ -15,6 +17,15 @@ public class ScoreApiClient : MonoBehaviour
         public string player_name;
         public int stage_id;
         public float clear_time;
+        public int death_count;
+    }
+
+    [System.Serializable]
+    private class BestResponse
+    {
+        public string player_name;
+        public int stage_id;
+        public float best_time;
         public int death_count;
     }
 
@@ -81,10 +92,47 @@ public class ScoreApiClient : MonoBehaviour
         if (request.result == UnityWebRequest.Result.Success)
         {
             Debug.Log("Score send success: " + request.downloadHandler.text);
+
+            StartCoroutine(GetBestScore(score.player_name, score.stage_id));
         }
         else
         {
             Debug.LogError("Score send failed: " + request.error);
+
+            if (bestTimeText != null)
+            {
+                bestTimeText.text = "Best: Load failed";
+            }
+        }
+    }
+
+    private IEnumerator GetBestScore(string playerName, int stageId)
+    {
+        string url = baseUrl + "/api/best?player_name=" + UnityWebRequest.EscapeURL(playerName) + "&stage_id=" + stageId;
+
+        using UnityWebRequest request = UnityWebRequest.Get(url);
+
+        yield return request.SendWebRequest();
+
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            Debug.Log("Best score get success: " + request.downloadHandler.text);
+
+            BestResponse best = JsonUtility.FromJson<BestResponse>(request.downloadHandler.text);
+
+            if (bestTimeText != null)
+            {
+                bestTimeText.text = "Best: " + best.best_time.ToString("F2") + "s";
+            }
+        }
+        else
+        {
+            Debug.LogError("Best score get failed: " + request.error);
+
+            if (bestTimeText != null)
+            {
+                bestTimeText.text = "Best: None";
+            }
         }
     }
 }

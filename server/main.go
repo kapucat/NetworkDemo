@@ -23,6 +23,12 @@ type RankingResponse struct {
 	ClearTime  float64 `json:"clear_time"`
 	DeathCount int     `json:"death_count"`
 }
+type BestResponse struct {
+	PlayerName string  `json:"player_name"`
+	StageID    int     `json:"stage_id"`
+	BestTime   float64 `json:"best_time"`
+	DeathCount int     `json:"death_count"`
+}
 
 var db *sql.DB
 
@@ -33,6 +39,7 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/api/scores", scoresHandler)
 	http.HandleFunc("/api/rankings", rankingsHandler)
+	http.HandleFunc("/api/best", bestHandler)
 
 	log.Println("Go server started: http://localhost:8080")
 
@@ -209,4 +216,63 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(rankings)
+}
+
+func bestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	playerName := r.URL.Query().Get("player_name")
+	if playerName == "" {
+		http.Error(w, "player_name is required", http.StatusBadRequest)
+		return
+	}
+
+	stageID := 1
+
+	stageIDText := r.URL.Query().Get("stage_id")
+	if stageIDText != "" {
+		parsedStageID, err := strconv.Atoi(stageIDText)
+		if err == nil {
+			stageID = parsedStageID
+		}
+	}
+
+	var best BestResponse
+	best.PlayerName = playerName
+	best.StageID = stageID
+
+	err := db.QueryRow(
+		`
+		SELECT player_name, stage_id, clear_time, death_count
+		FROM scores
+		WHERE player_name = $1
+		  AND stage_id = $2
+		ORDER BY clear_time ASC, created_at ASC
+		LIMIT 1
+		`,
+		playerName,
+		stageID,
+	).Scan(
+		&best.PlayerName,
+		&best.StageID,
+		&best.BestTime,
+		&best.DeathCount,
+	)
+
+	if err == sql.ErrNoRows {
+		http.Error(w, "best score not found", http.StatusNotFound)
+		return
+	}
+
+	if err != nil {
+		log.Println("best query failed:", err)
+		http.Error(w, "best query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(best)
 }
