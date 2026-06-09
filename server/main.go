@@ -143,17 +143,24 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rows, err := db.Query(
-		`
-		SELECT player_name, clear_time, death_count
+rows, err := db.Query(
+	`
+	SELECT player_name, clear_time, death_count
+	FROM (
+		SELECT DISTINCT ON (player_name)
+			player_name,
+			clear_time,
+			death_count,
+			created_at
 		FROM scores
 		WHERE stage_id = $1
-		ORDER BY clear_time ASC
-		LIMIT 10
-		`,
-		stageID,
-	)
-
+		ORDER BY player_name, clear_time ASC, created_at ASC
+	) AS best_scores
+	ORDER BY clear_time ASC
+	LIMIT 10
+	`,
+	stageID,
+)
 	if err != nil {
 		log.Println("ranking query failed:", err)
 		http.Error(w, "ranking query failed", http.StatusInternalServerError)
