@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: hook_runner_postgres
+    environment:
+      POSTGRES_USER: hook_user
+      POSTGRES_PASSWORD: hook_password
+      POSTGRES_DB: hook_runner_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
