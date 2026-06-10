@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	_ "github.com/lib/pq"
 )
@@ -95,12 +97,19 @@ func scoresHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	score.PlayerName = strings.TrimSpace(score.PlayerName)
+
 	if score.PlayerName == "" {
 		http.Error(w, "player_name is required", http.StatusBadRequest)
 		return
 	}
 
-	if score.StageID <= 0 {
+	if utf8.RuneCountInString(score.PlayerName) > 20 {
+		http.Error(w, "player_name is too long", http.StatusBadRequest)
+		return
+	}
+
+	if score.StageID != 1 {
 		http.Error(w, "stage_id is invalid", http.StatusBadRequest)
 		return
 	}
@@ -110,8 +119,18 @@ func scoresHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if score.ClearTime > 600 {
+		http.Error(w, "clear_time is too large", http.StatusBadRequest)
+		return
+	}
+
 	if score.DeathCount < 0 {
 		http.Error(w, "death_count is invalid", http.StatusBadRequest)
+		return
+	}
+
+	if score.DeathCount > 999 {
+		http.Error(w, "death_count is too large", http.StatusBadRequest)
 		return
 	}
 
