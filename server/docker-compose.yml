@@ -11,5 +11,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  api:
+    build: .
+    container_name: hook_runner_api
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: hook_user
+      DB_PASSWORD: hook_password
+      DB_NAME: hook_runner_db
+    ports:
+      - "8080:8080"
+
 volumes:
   postgres_data:

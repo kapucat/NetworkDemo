@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	_ "github.com/lib/pq"
@@ -52,7 +54,18 @@ func main() {
 }
 
 func initDB() {
-	connStr := "host=localhost port=5432 user=hook_user password=hook_password dbname=hook_runner_db sslmode=disable"
+	host := getEnv("DB_HOST", "localhost")
+	port := getEnv("DB_PORT", "5432")
+	user := getEnv("DB_USER", "hook_user")
+	password := getEnv("DB_PASSWORD", "hook_password")
+	dbName := getEnv("DB_NAME", "hook_runner_db")
+
+	connStr := "host=" + host +
+		" port=" + port +
+		" user=" + user +
+		" password=" + password +
+		" dbname=" + dbName +
+		" sslmode=disable"
 
 	var err error
 	db, err = sql.Open("postgres", connStr)
@@ -60,12 +73,18 @@ func initDB() {
 		log.Fatal("DB open failed:", err)
 	}
 
-	err = db.Ping()
-	if err != nil {
-		log.Fatal("DB ping failed:", err)
+	for i := 1; i <= 10; i++ {
+		err = db.Ping()
+		if err == nil {
+			log.Println("DB connected")
+			return
+		}
+
+		log.Printf("DB ping failed. retrying... (%d/10): %v", i, err)
+		time.Sleep(2 * time.Second)
 	}
 
-	log.Println("DB connected")
+	log.Fatal("DB ping failed:", err)
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -294,4 +313,13 @@ func bestHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(best)
+}
+
+func getEnv(key string, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	return value
 }
