@@ -3,12 +3,14 @@ using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
+//
 
 public class RankingApiClient : MonoBehaviour
 {
     [SerializeField] private string baseUrl = "http://localhost:8080";
     [SerializeField] private TextMeshProUGUI rankingListText;
     [SerializeField] private int stageId = 1;
+    [SerializeField] private int maxDisplayCount = 5;
 
     [System.Serializable]
     private class RankingData
@@ -70,10 +72,20 @@ public class RankingApiClient : MonoBehaviour
             return;
         }
 
+        if (rankings == null || rankings.Length == 0)
+        {
+            rankingListText.text = "No ranking data";
+            return;
+        }
+
         StringBuilder builder = new StringBuilder();
 
-        foreach (RankingData ranking in rankings)
+        int displayCount = Mathf.Min(rankings.Length, maxDisplayCount);
+
+        for (int i = 0; i < displayCount; i++)
         {
+            RankingData ranking = rankings[i];
+
             builder.AppendLine(
                 ranking.rank + ". " +
                 ranking.player_name + "  " +
