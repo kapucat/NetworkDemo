@@ -7,6 +7,7 @@ public class GrappleController : MonoBehaviour
     [SerializeField] private LineRenderer lineRenderer;
 
     [Header("Grapple Settings")]
+    [SerializeField] private bool canUseGrapple = true; //グラップルのオンオフ
     [SerializeField] private float maxDistance = 60f;
     [SerializeField] private float pullForce = 38f;
     [SerializeField] private float swingForce = 28f;
@@ -65,8 +66,13 @@ public class GrappleController : MonoBehaviour
         LimitSpeed();
     }
 
-    private void StartGrapple()
+    private void StartGrapple() // グラップル開始
     {
+        if (!canUseGrapple)
+        {
+            return;
+        }
+
         Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
 
         if (!Physics.Raycast(ray, out RaycastHit hit, maxDistance, grappleMask))
