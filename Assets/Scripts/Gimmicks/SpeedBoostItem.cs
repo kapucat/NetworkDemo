@@ -7,6 +7,7 @@ public class SpeedBoostItem : MonoBehaviour
     [SerializeField] private float boostDuration = 1.5f;
     [SerializeField] private bool destroyOnUse = true;
     [SerializeField] private SpeedFovEffect fovEffect;
+    [SerializeField] private SpeedLineEffect speedLineEffect;
 
     private bool isUsed = false;
 
@@ -46,7 +47,15 @@ public class SpeedBoostItem : MonoBehaviour
         {
             fovEffect.PlayBoostFov(boostDuration);
         }
+        if (speedLineEffect == null)
+        {
+            speedLineEffect = FindObjectOfType<SpeedLineEffect>();
+        }
 
+        if (speedLineEffect != null)
+        {
+            speedLineEffect.Play(boostDuration);
+        }
 
         Collider itemCollider = GetComponent<Collider>();
         if (itemCollider != null)
