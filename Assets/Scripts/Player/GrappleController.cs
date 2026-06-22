@@ -192,4 +192,10 @@ public class GrappleController : MonoBehaviour
         lineRenderer.SetPosition(0, ropeStartPosition);
         lineRenderer.SetPosition(1, grapplePoint);
     }
+
+    public void SetCameraTransform(Transform newCameraTransform)
+    {
+        cameraTransform = newCameraTransform;
+    }
+
 }

@@ -187,5 +187,9 @@ public class PlayerController : MonoBehaviour
     }
 
 
+    public void SetCameraTransform(Transform newCameraTransform)
+    {
+        cameraTransform = newCameraTransform;
+    }
 
 }
