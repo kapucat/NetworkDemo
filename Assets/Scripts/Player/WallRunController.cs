@@ -5,6 +5,9 @@ public class WallRunController : MonoBehaviour
     [Header("References")]
     [SerializeField] private Transform cameraTransform;
 
+    [Header("Wall Run Toggle")]
+    [SerializeField] private bool canUseWallRun = true;
+
     [Header("Wall Check")]
     [SerializeField] private float wallCheckDistance = 0.9f;
     [SerializeField] private LayerMask wallMask;
@@ -35,6 +38,7 @@ public class WallRunController : MonoBehaviour
     private float lastWallJumpTime;
 
     public bool IsWallRunning => isWallRunning;
+    public bool CanUseWallRun => canUseWallRun;
 
     private void Awake()
     {
@@ -43,6 +47,11 @@ public class WallRunController : MonoBehaviour
 
     private void Update()
     {
+        if (!canUseWallRun)
+        {
+            return;
+        }
+
         if (isWallRunning && Input.GetKeyDown(KeyCode.Space))
         {
             WallJump();
@@ -51,6 +60,18 @@ public class WallRunController : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (!canUseWallRun)
+        {
+            StopWallRun();
+            return;
+        }
+
+        if (cameraTransform == null)
+        {
+            StopWallRun();
+            return;
+        }
+
         CheckWall();
 
         if (CanStartOrContinueWallRun())
@@ -63,6 +84,16 @@ public class WallRunController : MonoBehaviour
             WallRunMovement();
         }
         else
+        {
+            StopWallRun();
+        }
+    }
+
+    public void SetWallRunEnabled(bool enabled)
+    {
+        canUseWallRun = enabled;
+
+        if (!canUseWallRun)
         {
             StopWallRun();
         }
