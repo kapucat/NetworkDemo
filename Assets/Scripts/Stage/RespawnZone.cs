@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class RespawnZone : MonoBehaviour
 {
-    [SerializeField] private Transform respawnPoint;
+    [SerializeField] private Transform fallbackRespawnPoint;
     [SerializeField] private DeathCounter deathCounter;
 
     private void OnTriggerEnter(Collider other)
@@ -17,6 +17,21 @@ public class RespawnZone : MonoBehaviour
             deathCounter.AddDeath();
         }
 
+        CheckpointManager checkpointManager = other.GetComponent<CheckpointManager>();
+
+        if (checkpointManager != null)
+        {
+            checkpointManager.Respawn();
+            return;
+        }
+
+        // CheckpointManagerÇ™ñ≥Ç¢èÍçáÇÃï€åØ
+        if (fallbackRespawnPoint == null)
+        {
+            Debug.LogWarning("Fallback Respawn Point is not assigned.");
+            return;
+        }
+
         Rigidbody rb = other.GetComponent<Rigidbody>();
 
         if (rb != null)
@@ -25,7 +40,7 @@ public class RespawnZone : MonoBehaviour
             rb.angularVelocity = Vector3.zero;
         }
 
-        other.transform.position = respawnPoint.position;
-        other.transform.rotation = respawnPoint.rotation;
+        other.transform.position = fallbackRespawnPoint.position;
+        other.transform.rotation = fallbackRespawnPoint.rotation;
     }
 }
