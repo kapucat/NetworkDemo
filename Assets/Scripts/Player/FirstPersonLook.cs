@@ -24,4 +24,17 @@ public class FirstPersonLook : MonoBehaviour
         transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
         playerBody.Rotate(Vector3.up * mouseX);
     }
+
+    public void ResetLook(Quaternion playerRotation)
+    {
+        xRotation = 0f;
+
+        if (playerBody != null)
+        {
+            playerBody.rotation = Quaternion.Euler(0f, playerRotation.eulerAngles.y, 0f);
+        }
+
+        transform.localRotation = Quaternion.identity;
+    }
+
 }

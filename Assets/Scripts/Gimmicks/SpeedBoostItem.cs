@@ -10,6 +10,29 @@ public class SpeedBoostItem : MonoBehaviour
     [SerializeField] private SpeedLineEffect speedLineEffect;
 
     private bool isUsed = false;
+    private Coroutine boostCoroutine;
+    private RespawnablePickup respawnablePickup;
+
+    private Renderer[] renderers;
+    private Collider[] colliders;
+
+    private void Awake()
+    {
+        respawnablePickup = GetComponent<RespawnablePickup>();
+
+        renderers = GetComponentsInChildren<Renderer>(true);
+        colliders = GetComponentsInChildren<Collider>(true);
+    }
+
+    private void OnEnable()
+    {
+        CheckpointManager.OnPlayerRespawned += ResetItem;
+    }
+
+    private void OnDisable()
+    {
+        CheckpointManager.OnPlayerRespawned -= ResetItem;
+    }
 
     private void OnTriggerEnter(Collider other)
     {
@@ -47,6 +70,7 @@ public class SpeedBoostItem : MonoBehaviour
         {
             fovEffect.PlayBoostFov(boostDuration);
         }
+
         if (speedLineEffect == null)
         {
             speedLineEffect = FindObjectOfType<SpeedLineEffect>();
@@ -57,19 +81,12 @@ public class SpeedBoostItem : MonoBehaviour
             speedLineEffect.Play(boostDuration);
         }
 
-        Collider itemCollider = GetComponent<Collider>();
-        if (itemCollider != null)
+        if (destroyOnUse)
         {
-            itemCollider.enabled = false;
+            HideItem();
         }
 
-        Renderer itemRenderer = GetComponent<Renderer>();
-        if (itemRenderer != null)
-        {
-            itemRenderer.enabled = false;
-        }
-
-        StartCoroutine(BoostPlayer(playerRb, other.transform));
+        boostCoroutine = StartCoroutine(BoostPlayer(playerRb, other.transform));
     }
 
     private IEnumerator BoostPlayer(Rigidbody playerRb, Transform playerTransform)
@@ -93,9 +110,55 @@ public class SpeedBoostItem : MonoBehaviour
             yield return new WaitForFixedUpdate();
         }
 
-        if (destroyOnUse)
+        boostCoroutine = null;
+    }
+
+    private void HideItem()
+    {
+        if (respawnablePickup != null)
         {
-            Destroy(gameObject);
+            respawnablePickup.HidePickup();
+            return;
+        }
+
+        SetItemVisible(false);
+    }
+
+    private void ResetItem()
+    {
+        if (boostCoroutine != null)
+        {
+            StopCoroutine(boostCoroutine);
+            boostCoroutine = null;
+        }
+
+        isUsed = false;
+
+        if (respawnablePickup != null)
+        {
+            respawnablePickup.ResetPickup();
+            return;
+        }
+
+        SetItemVisible(true);
+    }
+
+    private void SetItemVisible(bool active)
+    {
+        foreach (Renderer r in renderers)
+        {
+            if (r != null)
+            {
+                r.enabled = active;
+            }
+        }
+
+        foreach (Collider c in colliders)
+        {
+            if (c != null)
+            {
+                c.enabled = active;
+            }
         }
     }
 }

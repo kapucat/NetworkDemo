@@ -50,4 +50,23 @@ public class ThirdPersonCameraController : MonoBehaviour
 
         playerBody.rotation = Quaternion.Euler(0f, yaw, 0f);
     }
+
+    public void ResetCamera(Quaternion playerRotation)
+    {
+        yaw = playerRotation.eulerAngles.y;
+        pitch = 15f;
+
+        if (playerBody != null)
+        {
+            playerBody.rotation = Quaternion.Euler(0f, yaw, 0f);
+        }
+
+        if (target != null)
+        {
+            Quaternion cameraRotation = Quaternion.Euler(pitch, yaw, 0f);
+            transform.position = target.position + cameraRotation * offset;
+            transform.LookAt(target.position + Vector3.up * 1.3f);
+        }
+    }
+
 }

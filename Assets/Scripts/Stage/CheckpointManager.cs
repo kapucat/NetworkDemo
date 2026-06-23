@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 
 public class CheckpointManager : MonoBehaviour
 {
@@ -7,10 +8,14 @@ public class CheckpointManager : MonoBehaviour
     [SerializeField] private bool useCheckpointRotation = true;
     [SerializeField] private float respawnYOffset = 0.2f;
 
+
+
     private Transform currentCheckpoint;
     private int currentCheckpointOrder = 0;
 
     private Rigidbody rb;
+
+    public static event Action OnPlayerRespawned;
 
     private void Awake()
     {
@@ -51,6 +56,9 @@ public class CheckpointManager : MonoBehaviour
 
         Vector3 respawnPosition = currentCheckpoint.position + Vector3.up * respawnYOffset;
 
+        // ïKÇ∏ÉèÅ[ÉãÉhÇÃZ-ï˚å¸Çå¸Ç≠
+        Quaternion respawnRotation = Quaternion.Euler(0f, 180f, 0f);
+
         if (rb != null)
         {
             rb.velocity = Vector3.zero;
@@ -58,20 +66,23 @@ public class CheckpointManager : MonoBehaviour
             rb.useGravity = true;
 
             rb.position = respawnPosition;
-
-            if (useCheckpointRotation)
-            {
-                rb.rotation = currentCheckpoint.rotation;
-            }
+            rb.rotation = respawnRotation;
         }
-        else
+
+        transform.SetPositionAndRotation(respawnPosition, respawnRotation);
+
+        FirstPersonLook firstPersonLook = GetComponentInChildren<FirstPersonLook>(true);
+        if (firstPersonLook != null)
         {
-            transform.position = respawnPosition;
-
-            if (useCheckpointRotation)
-            {
-                transform.rotation = currentCheckpoint.rotation;
-            }
+            firstPersonLook.ResetLook(respawnRotation);
         }
+
+        ThirdPersonCameraController thirdPersonCameraController = GetComponentInChildren<ThirdPersonCameraController>(true);
+        if (thirdPersonCameraController != null)
+        {
+            thirdPersonCameraController.ResetCamera(respawnRotation);
+        }
+
+        OnPlayerRespawned?.Invoke();
     }
 }
