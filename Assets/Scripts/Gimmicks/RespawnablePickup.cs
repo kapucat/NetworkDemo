@@ -11,16 +11,6 @@ public class RespawnablePickup : MonoBehaviour
         colliders = GetComponentsInChildren<Collider>(true);
     }
 
-    private void OnEnable()
-    {
-        CheckpointManager.OnPlayerRespawned += ResetPickup;
-    }
-
-    private void OnDisable()
-    {
-        CheckpointManager.OnPlayerRespawned -= ResetPickup;
-    }
-
     public void HidePickup()
     {
         SetPickupActive(false);

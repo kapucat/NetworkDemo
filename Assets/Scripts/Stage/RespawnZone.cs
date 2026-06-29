@@ -25,7 +25,7 @@ public class RespawnZone : MonoBehaviour
             return;
         }
 
-        // CheckpointManager‚ª–³‚¢ê‡‚Ì•ÛŒ¯
+        // Fallback when CheckpointManager is missing
         if (fallbackRespawnPoint == null)
         {
             Debug.LogWarning("Fallback Respawn Point is not assigned.");

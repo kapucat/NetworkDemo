@@ -82,6 +82,12 @@ public class PlayerController : MonoBehaviour
 
     private void Move()
     {
+
+        if (cameraTransform == null)
+        {
+            return;
+        }
+
         Vector3 forward = cameraTransform.forward;
         Vector3 right = cameraTransform.right;
 

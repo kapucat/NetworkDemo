@@ -5,7 +5,6 @@ public class CheckpointManager : MonoBehaviour
 {
     [Header("Respawn")]
     [SerializeField] private Transform defaultRespawnPoint;
-    [SerializeField] private bool useCheckpointRotation = true;
     [SerializeField] private float respawnYOffset = 0.2f;
 
 
@@ -56,7 +55,7 @@ public class CheckpointManager : MonoBehaviour
 
         Vector3 respawnPosition = currentCheckpoint.position + Vector3.up * respawnYOffset;
 
-        // 必ずワールドのZ-方向を向く
+        // リスポーン時は必ずワールドのZ-方向を向く
         Quaternion respawnRotation = Quaternion.Euler(0f, 180f, 0f);
 
         if (rb != null)
