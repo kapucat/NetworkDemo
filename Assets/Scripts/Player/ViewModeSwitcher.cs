@@ -70,6 +70,9 @@ public class ViewModeSwitcher : MonoBehaviour
         if (grappleController != null)
         {
             grappleController.SetCameraTransform(activeCameraTransform);
+
+            // First person: grapple ON, Third person: grapple OFF
+            grappleController.SetGrappleEnabled(!isThirdPerson);
         }
 
         if (wallRunController != null)
