@@ -53,7 +53,7 @@ public class PlayerAnimationController : MonoBehaviour
 
         float speed = horizontalVelocity.magnitude;
         bool isGrounded = CheckGrounded();
-        bool isJumping = velocity.y > 0.1f;
+        bool isJumping = !isGrounded && velocity.y > 0.1f;
         bool isFalling = !isGrounded && velocity.y < -0.1f;
 
         animator.SetFloat(SpeedHash, speed);
