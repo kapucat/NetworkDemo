@@ -27,6 +27,7 @@ type RankingResponse struct {
 	ClearTime  float64 `json:"clear_time"`
 	DeathCount int     `json:"death_count"`
 }
+
 type BestResponse struct {
 	PlayerName string  `json:"player_name"`
 	StageID    int     `json:"stage_id"`
@@ -34,6 +35,18 @@ type BestResponse struct {
 	DeathCount int     `json:"death_count"`
 }
 
+type StatsResponse struct {
+	ServerStatus     string  `json:"server_status"`
+	DBStatus         string  `json:"db_status"`
+	StageID          int     `json:"stage_id"`
+	TotalScores      int     `json:"total_scores"`
+	PlayerCount      int     `json:"player_count"`
+	HasScores        bool    `json:"has_scores"`
+	BestTime         float64 `json:"best_time"`
+	LatestPlayer     string  `json:"latest_player"`
+	LatestTime       float64 `json:"latest_time"`
+	LatestDeathCount int     `json:"latest_death_count"`
+}
 var db *sql.DB
 
 func main() {
@@ -45,6 +58,7 @@ func main() {
 	http.HandleFunc("/api/scores", scoresHandler)
 	http.HandleFunc("/api/rankings", rankingsHandler)
 	http.HandleFunc("/api/best", bestHandler)
+	http.HandleFunc("/api/stats", statsHandler)
 
 	log.Println("Go server started: http://localhost:8080")
 
@@ -334,6 +348,108 @@ func bestHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(best)
+}
+
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	stageID := 1
+
+	stageIDText := r.URL.Query().Get("stage_id")
+	if stageIDText != "" {
+		parsedStageID, err := strconv.Atoi(stageIDText)
+		if err == nil {
+			stageID = parsedStageID
+		}
+	}
+
+	stats := StatsResponse{
+		ServerStatus: "ok",
+		DBStatus:     "ok",
+		StageID:      stageID,
+	}
+
+	err := db.Ping()
+	if err != nil {
+		log.Println("stats db ping failed:", err)
+		stats.DBStatus = "error"
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(stats)
+		return
+	}
+
+	err = db.QueryRow(
+		`
+		SELECT
+			COUNT(*),
+			COUNT(DISTINCT player_name)
+		FROM scores
+		WHERE stage_id = $1
+		`,
+		stageID,
+	).Scan(
+		&stats.TotalScores,
+		&stats.PlayerCount,
+	)
+
+	if err != nil {
+		log.Println("stats count query failed:", err)
+		http.Error(w, "stats count query failed", http.StatusInternalServerError)
+		return
+	}
+
+	err = db.QueryRow(
+		`
+		SELECT clear_time
+		FROM scores
+		WHERE stage_id = $1
+		ORDER BY clear_time ASC, created_at ASC
+		LIMIT 1
+		`,
+		stageID,
+	).Scan(&stats.BestTime)
+
+	if err == sql.ErrNoRows {
+		stats.HasScores = false
+	} else if err != nil {
+		log.Println("stats best time query failed:", err)
+		http.Error(w, "stats best time query failed", http.StatusInternalServerError)
+		return
+	} else {
+		stats.HasScores = true
+	}
+
+	err = db.QueryRow(
+		`
+		SELECT player_name, clear_time, death_count
+		FROM scores
+		WHERE stage_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+		`,
+		stageID,
+	).Scan(
+		&stats.LatestPlayer,
+		&stats.LatestTime,
+		&stats.LatestDeathCount,
+	)
+
+	if err == sql.ErrNoRows {
+		stats.LatestPlayer = ""
+		stats.LatestTime = 0
+		stats.LatestDeathCount = 0
+	} else if err != nil {
+		log.Println("stats latest score query failed:", err)
+		http.Error(w, "stats latest score query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
 }
 
 func getEnv(key string, defaultValue string) string {
