@@ -38,6 +38,7 @@ var db *sql.DB
 
 func main() {
 	initDB()
+	initTables()
 	defer db.Close()
 
 	http.HandleFunc("/health", healthHandler)
@@ -85,6 +86,26 @@ func initDB() {
 	}
 
 	log.Fatal("DB ping failed:", err)
+}
+
+func initTables() {
+	createScoresTableSQL := `
+CREATE TABLE IF NOT EXISTS scores (
+    id SERIAL PRIMARY KEY,
+    player_name VARCHAR(50) NOT NULL,
+    stage_id INT NOT NULL,
+    clear_time DOUBLE PRECISION NOT NULL,
+    death_count INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`
+
+	_, err := db.Exec(createScoresTableSQL)
+	if err != nil {
+		log.Fatalf("failed to create scores table: %v", err)
+	}
+
+	log.Println("scores table ready")
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
