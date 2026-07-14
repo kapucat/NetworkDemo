@@ -24,7 +24,7 @@ k6 version
 ローカルで測定する場合：
 
 ```powershell
-cd "C:\Users\2240037\OneDrive - yamaguchigakuen\HookRunnerServer\server"
+cd "C:\Users\2240037\Desktop\3年\卒業制作\HookRunnerServer\server"
 docker compose up -d --build
 docker ps
 ```
@@ -40,7 +40,7 @@ Invoke-RestMethod "http://localhost:8080/health"
 `/health`、`/api/rankings`、`/api/stats` が正常応答するかを1 VU・15秒で確認します。
 
 ```powershell
-cd "C:\Users\2240037\OneDrive - yamaguchigakuen\HookRunnerServer\server\loadtest"
+cd "C:\Users\2240037\Desktop\3年\卒業制作\HookRunnerServer\server\loadtest"
 k6 run -e BASE_URL=http://localhost:8080 smoke-readonly.js
 ```
 
