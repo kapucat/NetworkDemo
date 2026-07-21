@@ -121,6 +121,24 @@ CREATE TABLE IF NOT EXISTS scores (
 	}
 
 	log.Println("scores table ready")
+
+	createRankingIndexSQL := `
+CREATE INDEX IF NOT EXISTS idx_scores_ranking
+ON scores (
+    stage_id,
+    player_name,
+    clear_time,
+    created_at
+)
+INCLUDE (death_count);
+`
+
+	_, err = db.Exec(createRankingIndexSQL)
+	if err != nil {
+		log.Fatalf("failed to create ranking index: %v", err)
+	}
+
+	log.Println("scores ranking index ready")
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
