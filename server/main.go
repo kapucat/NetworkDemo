@@ -89,10 +89,23 @@ func initDB() {
 		log.Fatal("DB open failed:", err)
 	}
 
+	// PostgreSQLへ同時に接続しすぎないように制限する
+	db.SetMaxOpenConns(20)
+
+	// 再利用できる待機中の接続数
+	db.SetMaxIdleConns(10)
+
+	// 1つの接続を使い続ける最大時間
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	// 使用されていない接続を保持する最大時間
+	db.SetConnMaxIdleTime(5 * time.Minute)
+
 	for i := 1; i <= 10; i++ {
 		err = db.Ping()
 		if err == nil {
 			log.Println("DB connected")
+			log.Println("DB connection pool ready")
 			return
 		}
 
