@@ -28,6 +28,10 @@ public class SceneLoader : MonoBehaviour
         SceneManager.LoadScene("MenuScene");
     }
 
+    public void LoadLogin()
+    {
+        SceneManager.LoadScene("LoginScene");
+    }
     public void QuitGame()
     {
         Application.Quit();
