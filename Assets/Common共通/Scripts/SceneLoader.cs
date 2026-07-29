@@ -32,6 +32,16 @@ public class SceneLoader : MonoBehaviour
     {
         SceneManager.LoadScene("LoginScene");
     }
+    public void LoadAccountCreate()
+    {
+        SceneManager.LoadScene("AccountCreateScene");
+    }
+
+    public void AccountCreateScene()
+    {
+        SceneManager.LoadScene("AccountCreateScene");
+    }
+
     public void QuitGame()
     {
         Application.Quit();
