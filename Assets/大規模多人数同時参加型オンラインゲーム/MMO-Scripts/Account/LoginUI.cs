@@ -2,6 +2,7 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public class LoginUI : MonoBehaviour
 {
@@ -74,10 +75,19 @@ public class LoginUI : MonoBehaviour
 
         if (success)
         {
-            ShowMessage(
-                $"ログイン成功：{returnedLoginName} ID: {accountId}");
+            if (MMOSession.Instance == null)
+            {
+                ShowMessage("セッションの設定が見つかりません");
+                yield break;
+            }
+
+            MMOSession.Instance.SetAccount(
+                accountId,
+                returnedLoginName);
 
             passwordInputField.text = "";
+
+            SceneManager.LoadScene("MMOMainScene");
             yield break;
         }
 
