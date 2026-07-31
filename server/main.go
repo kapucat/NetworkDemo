@@ -53,9 +53,11 @@ var db *sql.DB
 func main() {
 	initDB()
 	initTables()
+	initAccountsTable()
 	defer db.Close()
 
 	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/api/accounts/register", accountRegisterHandler)
 	http.HandleFunc("/api/scores", scoresHandler)
 	http.HandleFunc("/api/rankings", rankingsHandler)
 	http.HandleFunc("/api/best", bestHandler)
