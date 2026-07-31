@@ -59,6 +59,7 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/api/accounts/register", accountRegisterHandler)
 	http.HandleFunc("/api/accounts/login", accountLoginHandler)
+	http.HandleFunc("/ws", websocketHandler)
 	http.HandleFunc("/api/scores", scoresHandler)
 	http.HandleFunc("/api/rankings", rankingsHandler)
 	http.HandleFunc("/api/best", bestHandler)
