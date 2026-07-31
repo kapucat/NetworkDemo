@@ -19,4 +19,14 @@ public class MMOMainUI : MonoBehaviour
             $"ログイン中：{MMOSession.Instance.LoginName}\n" +
             $"Account ID：{MMOSession.Instance.AccountId}";
     }
+
+    public void OnLogoutButtonClicked()
+    {
+        if (MMOSession.Instance != null)
+        {
+            MMOSession.Instance.Clear();
+        }
+
+        SceneManager.LoadScene("LoginScene");
+    }
 }
