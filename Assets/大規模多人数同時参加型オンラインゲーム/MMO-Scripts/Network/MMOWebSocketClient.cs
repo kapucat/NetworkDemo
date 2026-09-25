@@ -10,8 +10,15 @@ public class MMOWebSocketClient : MonoBehaviour
 
     private WebSocket websocket;
 
+    public event Action<string, string, string>
+        OnChatMessageReceived;
+
+    public bool IsConnected =>
+        websocket != null &&
+        websocket.State == WebSocketState.Open;
+
     [Serializable]
-    private class ServerMessage
+    private class WebSocketMessage
     {
         public string type;
         public string login_name;
@@ -47,17 +54,30 @@ public class MMOWebSocketClient : MonoBehaviour
             string json =
                 Encoding.UTF8.GetString(messageBytes);
 
-            Debug.Log(
-                $"WebSocket受信: {json}");
+            Debug.Log($"WebSocket受信: {json}");
 
             try
             {
-                ServerMessage serverMessage =
-                    JsonUtility.FromJson<ServerMessage>(json);
+                WebSocketMessage receivedMessage =
+                    JsonUtility.FromJson<WebSocketMessage>(json);
+
+                if (receivedMessage == null)
+                {
+                    return;
+                }
 
                 Debug.Log(
-                    $"種類: {serverMessage.type} / " +
-                    $"内容: {serverMessage.message}");
+                    $"種類: {receivedMessage.type} / " +
+                    $"内容: {receivedMessage.message}");
+
+                if (receivedMessage.type == "chat" ||
+                    receivedMessage.type == "chat.message")
+                {
+                    OnChatMessageReceived?.Invoke(
+                        receivedMessage.login_name,
+                        receivedMessage.message,
+                        receivedMessage.sent_at);
+                }
             }
             catch (Exception exception)
             {
@@ -79,6 +99,48 @@ public class MMOWebSocketClient : MonoBehaviour
         }
     }
 
+    public async void SendChat(string message)
+    {
+        if (!IsConnected)
+        {
+            Debug.LogWarning(
+                "WebSocketへ接続されていません");
+            return;
+        }
+
+        string loginName = "";
+
+        if (MMOSession.Instance != null)
+        {
+            loginName = MMOSession.Instance.LoginName;
+        }
+
+        WebSocketMessage sendMessage =
+            new WebSocketMessage
+            {
+                type = "chat",
+                login_name = loginName,
+                message = message,
+                sent_at = ""
+            };
+
+        string json =
+            JsonUtility.ToJson(sendMessage);
+
+        try
+        {
+            await websocket.SendText(json);
+
+            Debug.Log(
+                $"WebSocket送信: {json}");
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                $"WebSocket送信失敗: {exception.Message}");
+        }
+    }
+
     private async void OnDestroy()
     {
         if (websocket == null)
@@ -89,7 +151,16 @@ public class MMOWebSocketClient : MonoBehaviour
         if (websocket.State == WebSocketState.Open ||
             websocket.State == WebSocketState.Connecting)
         {
-            await websocket.Close();
+            try
+            {
+                await websocket.Close();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    $"WebSocket切断処理失敗: " +
+                    $"{exception.Message}");
+            }
         }
     }
 }
