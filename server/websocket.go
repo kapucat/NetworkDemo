@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -17,12 +16,84 @@ type WebSocketMessage struct {
 	SentAt    string `json:"sent_at"`
 }
 
+type Client struct {
+	hub        *Hub
+	connection *websocket.Conn
+	send       chan WebSocketMessage
+	remoteAddr string
+}
+
+type Hub struct {
+	clients    map[*Client]bool
+	register   chan *Client
+	unregister chan *Client
+	broadcast  chan WebSocketMessage
+}
+
+func newHub() *Hub {
+	return &Hub{
+		clients:    make(map[*Client]bool),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		broadcast:  make(chan WebSocketMessage),
+	}
+}
+
+var websocketHub = newHub()
+
+func (hub *Hub) run() {
+	for {
+		select {
+		case client := <-hub.register:
+			hub.clients[client] = true
+
+			log.Printf(
+				"websocket client registered: remote=%s total=%d",
+				client.remoteAddr,
+				len(hub.clients),
+			)
+
+		case client := <-hub.unregister:
+			if _, exists := hub.clients[client]; exists {
+				delete(hub.clients, client)
+				close(client.send)
+
+				log.Printf(
+					"websocket client unregistered: remote=%s total=%d",
+					client.remoteAddr,
+					len(hub.clients),
+				)
+			}
+
+		case message := <-hub.broadcast:
+			for client := range hub.clients {
+				select {
+				case client.send <- message:
+
+				default:
+					// 送信キューが詰まったクライアントは
+					// Hubから外して接続を閉じる。
+					delete(hub.clients, client)
+					close(client.send)
+
+					if err := client.connection.Close(); err != nil {
+						log.Println(
+							"websocket close failed:",
+							err,
+						)
+					}
+				}
+			}
+		}
+	}
+}
+
 var websocketUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 
 	// Unity Editor・Windowsアプリからの接続確認用。
-	// ブラウザ版を公開する際は接続元を制限する。
+	// 公開時は接続元を制限する。
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -39,93 +110,152 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connection, err := websocketUpgrader.Upgrade(w, r, nil)
+	connection, err := websocketUpgrader.Upgrade(
+		w,
+		r,
+		nil,
+	)
 	if err != nil {
-		log.Println("websocket upgrade failed:", err)
+		log.Println(
+			"websocket upgrade failed:",
+			err,
+		)
 		return
 	}
-	defer connection.Close()
 
-	log.Printf(
-		"websocket connected: remote=%s",
-		r.RemoteAddr,
-	)
+	client := &Client{
+		hub:        websocketHub,
+		connection: connection,
+		send:       make(chan WebSocketMessage, 64),
+		remoteAddr: r.RemoteAddr,
+	}
+
+	client.hub.register <- client
+
+	go client.writePump()
 
 	connectedMessage := WebSocketMessage{
 		Type:    "connected",
 		Message: "websocket connected",
-		SentAt:  time.Now().UTC().Format(time.RFC3339),
+		SentAt: time.Now().
+			UTC().
+			Format(time.RFC3339),
 	}
 
-	if err := connection.WriteJSON(connectedMessage); err != nil {
-		log.Println("websocket initial write failed:", err)
-		return
-	}
+	client.send <- connectedMessage
+
+	// この処理は切断されるまで継続する。
+	client.readPump()
+}
+
+func (client *Client) readPump() {
+	defer func() {
+		client.hub.unregister <- client
+
+		if err := client.connection.Close(); err != nil {
+			log.Println(
+				"websocket close failed:",
+				err,
+			)
+		}
+
+		log.Printf(
+			"websocket disconnected: remote=%s",
+			client.remoteAddr,
+		)
+	}()
 
 	for {
 		var receivedMessage WebSocketMessage
 
-		err := connection.ReadJSON(&receivedMessage)
+		err := client.connection.ReadJSON(
+			&receivedMessage,
+		)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(
 				err,
 				websocket.CloseNormalClosure,
 				websocket.CloseGoingAway,
 			) {
-				log.Println("websocket read failed:", err)
+				log.Println(
+					"websocket read failed:",
+					err,
+				)
 			}
 
-			break
+			return
 		}
 
 		receivedMessage.Message =
-			strings.TrimSpace(receivedMessage.Message)
+			strings.TrimSpace(
+				receivedMessage.Message,
+			)
 
 		if receivedMessage.Message == "" {
 			continue
 		}
 
-		if len([]rune(receivedMessage.Message)) > 200 {
-			errorMessage := WebSocketMessage{
-				Type:    "error",
-				Message: "message is too long",
-				SentAt:  time.Now().UTC().Format(time.RFC3339),
-			}
+		if receivedMessage.Type != "chat" &&
+			receivedMessage.Type != "chat.send" {
 
-			if err := connection.WriteJSON(errorMessage); err != nil {
-				log.Println("websocket error write failed:", err)
-				break
+			client.send <- WebSocketMessage{
+				Type:    "error",
+				Message: "unsupported message type",
+				SentAt: time.Now().
+					UTC().
+					Format(time.RFC3339),
 			}
 
 			continue
 		}
 
+		if len([]rune(receivedMessage.Message)) > 200 {
+			client.send <- WebSocketMessage{
+				Type:    "error",
+				Message: "message is too long",
+				SentAt: time.Now().
+					UTC().
+					Format(time.RFC3339),
+			}
+
+			continue
+		}
+
+		receivedMessage.LoginName =
+			strings.TrimSpace(
+				receivedMessage.LoginName,
+			)
+
 		log.Printf(
-			"websocket message received: type=%s login_name=%s message=%s",
-			receivedMessage.Type,
+			"websocket chat received: remote=%s login_name=%s",
+			client.remoteAddr,
 			receivedMessage.LoginName,
-			receivedMessage.Message,
 		)
 
-		echoMessage := WebSocketMessage{
-			Type:      "chat",
+		broadcastMessage := WebSocketMessage{
+			Type:      "chat.message",
 			LoginName: receivedMessage.LoginName,
 			Message:   receivedMessage.Message,
-			SentAt:    time.Now().UTC().Format(time.RFC3339),
+			SentAt: time.Now().
+				UTC().
+				Format(time.RFC3339),
 		}
 
-		if err := connection.WriteJSON(echoMessage); err != nil {
-			log.Println("websocket write failed:", err)
-			break
-		}
+		client.hub.broadcast <- broadcastMessage
 	}
-
-	log.Printf(
-		"websocket disconnected: remote=%s",
-		r.RemoteAddr,
-	)
 }
 
-// encoding/jsonがプロジェクト内で利用可能かを
-// コンパイル時に明確に確認するための宣言。
-var _ = json.Valid
+func (client *Client) writePump() {
+	for message := range client.send {
+		err := client.connection.WriteJSON(
+			message,
+		)
+		if err != nil {
+			log.Println(
+				"websocket write failed:",
+				err,
+			)
+			return
+		}
+	}
+}

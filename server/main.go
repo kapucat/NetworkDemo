@@ -56,6 +56,8 @@ func main() {
 	initAccountsTable()
 	defer db.Close()
 
+	go websocketHub.run()
+
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/api/accounts/register", accountRegisterHandler)
 	http.HandleFunc("/api/accounts/login", accountLoginHandler)
