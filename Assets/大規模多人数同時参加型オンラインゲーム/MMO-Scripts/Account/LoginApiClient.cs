@@ -23,12 +23,15 @@ public class LoginApiClient : MonoBehaviour
         public string message;
         public long account_id;
         public string login_name;
+        public string session_token;
     }
 
     public IEnumerator Login(
         string loginName,
         string password,
-        Action<bool, long, string, string> onCompleted)
+        Action<bool, long, string, string, string> onCompleted
+    )
+
     {
         LoginRequest requestData = new LoginRequest
         {
@@ -77,6 +80,10 @@ public class LoginApiClient : MonoBehaviour
             ? response.login_name
             : "";
 
+        string sessionToken = response != null
+            ? response.session_token
+            : "";
+
         string message = response != null
             ? response.message
             : "connection failed";
@@ -91,6 +98,7 @@ public class LoginApiClient : MonoBehaviour
             success,
             accountId,
             returnedLoginName,
+            sessionToken,
             message);
     }
 }

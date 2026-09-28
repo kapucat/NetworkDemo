@@ -54,6 +54,7 @@ func main() {
 	initDB()
 	initTables()
 	initAccountsTable()
+	initAccountSessionsTable()
 	defer db.Close()
 
 	go websocketHub.run()

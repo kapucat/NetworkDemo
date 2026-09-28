@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/lib/pq"
@@ -44,9 +47,10 @@ type AccountLoginRequest struct {
 }
 
 type AccountLoginResponse struct {
-	Message   string `json:"message"`
-	AccountID int64  `json:"account_id,omitempty"`
-	LoginName string `json:"login_name,omitempty"`
+	Message      string `json:"message"`
+	AccountID    int64  `json:"account_id,omitempty"`
+	LoginName    string `json:"login_name,omitempty"`
+	SessionToken string `json:"session_token,omitempty"`
 }
 
 // MMOアカウント用テーブルを準備する。
@@ -69,6 +73,43 @@ CREATE TABLE IF NOT EXISTS accounts (
 	}
 
 	log.Println("accounts table ready")
+}
+
+func initAccountSessionsTable() {
+	const createSessionsTableSQL = `
+CREATE TABLE IF NOT EXISTS account_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL
+        REFERENCES accounts(id)
+        ON DELETE CASCADE,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`
+
+	_, err := db.Exec(createSessionsTableSQL)
+	if err != nil {
+		log.Fatalf(
+			"failed to create account_sessions table: %v",
+			err,
+		)
+	}
+
+	const createSessionIndexSQL = `
+CREATE INDEX IF NOT EXISTS idx_account_sessions_token_hash
+ON account_sessions (token_hash);
+`
+
+	_, err = db.Exec(createSessionIndexSQL)
+	if err != nil {
+		log.Fatalf(
+			"failed to create account session index: %v",
+			err,
+		)
+	}
+
+	log.Println("account_sessions table ready")
 }
 
 // POST /api/accounts/register
@@ -332,6 +373,25 @@ WHERE id = $1
 		return
 	}
 
+	sessionToken, err :=
+		createSessionToken(accountID)
+
+	if err != nil {
+		log.Println(
+			"session token creation failed:",
+			err,
+		)
+
+		writeAccountJSON(
+			w,
+			http.StatusInternalServerError,
+			AccountLoginResponse{
+				Message: "login failed",
+			},
+		)
+		return
+	}
+
 	log.Printf(
 		"account login succeeded: id=%d login_name=%s",
 		accountID,
@@ -342,9 +402,10 @@ WHERE id = $1
 		w,
 		http.StatusOK,
 		AccountLoginResponse{
-			Message:   "login successful",
-			AccountID: accountID,
-			LoginName: request.LoginName,
+			Message:      "login successful",
+			AccountID:    accountID,
+			LoginName:    request.LoginName,
+			SessionToken: sessionToken,
 		},
 	)
 }
@@ -357,6 +418,54 @@ func writeInvalidLoginResponse(w http.ResponseWriter) {
 			Message: "invalid login_name or password",
 		},
 	)
+}
+
+func createSessionToken(
+	accountID int64,
+) (string, error) {
+	tokenBytes := make([]byte, 32)
+
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf(
+			"session token generation failed: %w",
+			err,
+		)
+	}
+
+	sessionToken :=
+		base64.RawURLEncoding.EncodeToString(tokenBytes)
+
+	tokenHashBytes :=
+		sha256.Sum256([]byte(sessionToken))
+
+	tokenHash :=
+		hex.EncodeToString(tokenHashBytes[:])
+
+	expiresAt :=
+		time.Now().UTC().Add(24 * time.Hour)
+
+	_, err := db.Exec(
+		`
+INSERT INTO account_sessions (
+    account_id,
+    token_hash,
+    expires_at
+)
+VALUES ($1, $2, $3)
+`,
+		accountID,
+		tokenHash,
+		expiresAt,
+	)
+
+	if err != nil {
+		return "", fmt.Errorf(
+			"session insert failed: %w",
+			err,
+		)
+	}
+
+	return sessionToken, nil
 }
 
 func hashPassword(password string) (string, error) {

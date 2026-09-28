@@ -59,15 +59,17 @@ public class LoginUI : MonoBehaviour
         long accountId = 0;
         string returnedLoginName = "";
         string serverMessage = "";
+        string sessionToken = "";
 
         yield return loginApiClient.Login(
             loginName,
             password,
-            (result, id, name, message) =>
+            (result, id, name, token, message) =>
             {
                 success = result;
                 accountId = id;
                 returnedLoginName = name;
+                sessionToken = token;
                 serverMessage = message;
             });
 
@@ -83,7 +85,8 @@ public class LoginUI : MonoBehaviour
 
             MMOSession.Instance.SetAccount(
                 accountId,
-                returnedLoginName);
+                returnedLoginName,
+                sessionToken);
 
             passwordInputField.text = "";
 
