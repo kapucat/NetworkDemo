@@ -30,8 +30,28 @@ public class MMOWebSocketClient : MonoBehaviour
     {
         Application.runInBackground = true;
 
-        websocket = new WebSocket(serverUrl);
+        if (MMOSession.Instance == null ||
+            !MMOSession.Instance.IsLoggedIn)
+        {
+            Debug.LogError(
+                "ログインセッションが存在しないためWebSocketへ接続できません");
+            return;
+        }
 
+        string sessionToken =
+            MMOSession.Instance.SessionToken;
+
+        string separator =
+            serverUrl.Contains("?") ? "&" : "?";
+
+        string authenticatedUrl =
+            serverUrl +
+            separator +
+            "token=" +
+            Uri.EscapeDataString(sessionToken);
+
+        websocket =
+            new WebSocket(authenticatedUrl);
         websocket.OnOpen += () =>
         {
             Debug.Log("WebSocket接続成功");
@@ -119,7 +139,6 @@ public class MMOWebSocketClient : MonoBehaviour
             new WebSocketMessage
             {
                 type = "chat",
-                login_name = loginName,
                 message = message,
                 sent_at = ""
             };

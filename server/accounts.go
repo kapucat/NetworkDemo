@@ -468,6 +468,61 @@ VALUES ($1, $2, $3)
 	return sessionToken, nil
 }
 
+func validateSessionToken(
+	sessionToken string,
+) (int64, string, error) {
+	sessionToken = strings.TrimSpace(sessionToken)
+
+	if sessionToken == "" {
+		return 0, "", errors.New(
+			"session token is required",
+		)
+	}
+
+	tokenHashBytes :=
+		sha256.Sum256([]byte(sessionToken))
+
+	tokenHash :=
+		hex.EncodeToString(tokenHashBytes[:])
+
+	var accountID int64
+	var loginName string
+
+	err := db.QueryRow(
+		`
+SELECT
+    a.id,
+    a.login_name
+FROM account_sessions AS s
+JOIN accounts AS a
+    ON a.id = s.account_id
+WHERE s.token_hash = $1
+  AND s.expires_at > CURRENT_TIMESTAMP
+  AND a.status = 'active'
+LIMIT 1
+`,
+		tokenHash,
+	).Scan(
+		&accountID,
+		&loginName,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", errors.New(
+			"invalid or expired session",
+		)
+	}
+
+	if err != nil {
+		return 0, "", fmt.Errorf(
+			"session lookup failed: %w",
+			err,
+		)
+	}
+
+	return accountID, loginName, nil
+}
+
 func hashPassword(password string) (string, error) {
 	salt := make([]byte, argonSaltLength)
 

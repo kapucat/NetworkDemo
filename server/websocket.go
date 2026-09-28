@@ -21,6 +21,8 @@ type Client struct {
 	connection *websocket.Conn
 	send       chan WebSocketMessage
 	remoteAddr string
+	accountID  int64
+	loginName  string
 }
 
 type Hub struct {
@@ -110,6 +112,38 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sessionToken :=
+		strings.TrimSpace(
+			r.URL.Query().Get("token"),
+		)
+
+	if sessionToken == "" {
+		http.Error(
+			w,
+			"unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	accountID, loginName, err :=
+		validateSessionToken(sessionToken)
+
+	if err != nil {
+		log.Printf(
+			"websocket authentication failed: remote=%s error=%v",
+			r.RemoteAddr,
+			err,
+		)
+
+		http.Error(
+			w,
+			"unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
 	connection, err := websocketUpgrader.Upgrade(
 		w,
 		r,
@@ -128,7 +162,16 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		connection: connection,
 		send:       make(chan WebSocketMessage, 64),
 		remoteAddr: r.RemoteAddr,
+		accountID:  accountID,
+		loginName:  loginName,
 	}
+
+	log.Printf(
+		"websocket authenticated: remote=%s account_id=%d login_name=%s",
+		client.remoteAddr,
+		client.accountID,
+		client.loginName,
+	)
 
 	client.hub.register <- client
 
@@ -221,20 +264,16 @@ func (client *Client) readPump() {
 			continue
 		}
 
-		receivedMessage.LoginName =
-			strings.TrimSpace(
-				receivedMessage.LoginName,
-			)
-
 		log.Printf(
-			"websocket chat received: remote=%s login_name=%s",
+			"websocket chat received: remote=%s account_id=%d login_name=%s",
 			client.remoteAddr,
-			receivedMessage.LoginName,
+			client.accountID,
+			client.loginName,
 		)
 
 		broadcastMessage := WebSocketMessage{
 			Type:      "chat.message",
-			LoginName: receivedMessage.LoginName,
+			LoginName: client.loginName,
 			Message:   receivedMessage.Message,
 			SentAt: time.Now().
 				UTC().
