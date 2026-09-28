@@ -19,6 +19,13 @@ public class LoginUI : MonoBehaviour
 
     private bool isSending;
 
+    private void Start()
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
+
     public void OnLoginButtonClicked()
     {
         if (isSending)
