@@ -15,6 +15,10 @@ public class MMOClickMove : MonoBehaviour
     [SerializeField]
     private GameObject moveClickMarkerPrefab;
 
+    [Header("UI")]
+    [SerializeField]
+    private MMOChatUI chatUI;
+
     private NavMeshAgent agent;
 
     private GameObject currentMarkerInstance;
@@ -36,11 +40,20 @@ public class MMOClickMove : MonoBehaviour
             return;
         }
 
+        // チャット入力中は移動させない
+        if (chatUI != null &&
+            chatUI.IsInputActive)
+        {
+            return;
+        }
+
         if (!Mouse.current.rightButton.wasPressedThisFrame)
         {
             return;
         }
 
+        // ボタンや入力欄など、
+        // 実際に操作するUIの上では移動させない
         if (EventSystem.current != null &&
             EventSystem.current.IsPointerOverGameObject())
         {
@@ -49,7 +62,8 @@ public class MMOClickMove : MonoBehaviour
 
         if (!agent.isOnNavMesh)
         {
-            Debug.LogWarning("PlayerがNavMesh上にいません");
+            Debug.LogWarning(
+                "PlayerがNavMesh上にいません");
             return;
         }
 
@@ -57,7 +71,8 @@ public class MMOClickMove : MonoBehaviour
             Mouse.current.position.ReadValue();
 
         Ray ray =
-            mainCamera.ScreenPointToRay(mousePosition);
+            mainCamera.ScreenPointToRay(
+                mousePosition);
 
         if (!Physics.Raycast(
                 ray,
@@ -77,9 +92,11 @@ public class MMOClickMove : MonoBehaviour
             return;
         }
 
-        agent.SetDestination(navMeshHit.position);
+        agent.SetDestination(
+            navMeshHit.position);
 
-        ShowMoveMarker(navMeshHit.position);
+        ShowMoveMarker(
+            navMeshHit.position);
     }
 
     private void ShowMoveMarker(Vector3 position)
@@ -94,11 +111,16 @@ public class MMOClickMove : MonoBehaviour
             Destroy(currentMarkerInstance);
         }
 
-        Vector3 spawnPosition = position + Vector3.up * 0.03f;
+        Vector3 spawnPosition =
+            position + Vector3.up * 0.03f;
 
-        currentMarkerInstance = Instantiate(
-            moveClickMarkerPrefab,
-            spawnPosition,
-            Quaternion.Euler(90f, 0f, 0f));
+        currentMarkerInstance =
+            Instantiate(
+                moveClickMarkerPrefab,
+                spawnPosition,
+                Quaternion.Euler(
+                    90f,
+                    0f,
+                    0f));
     }
 }
