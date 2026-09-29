@@ -17,6 +17,9 @@ public class MMOWebSocketClient : MonoBehaviour
 
     public event Action<long, string>
         OnPlayerLeft;
+    
+    public event Action<long, string, Vector3, float>
+    OnPlayerMoved;
 
     public bool IsConnected =>
         websocket != null &&
@@ -30,6 +33,10 @@ public class MMOWebSocketClient : MonoBehaviour
         public string login_name;
         public string message;
         public string sent_at;
+        public float x;
+        public float y;
+        public float z;
+        public float rotation_y;
     }
 
     private async void Start()
@@ -124,6 +131,24 @@ public class MMOWebSocketClient : MonoBehaviour
                     return;
                 }
 
+                if (receivedMessage.type == "player.move")
+                {
+                    Vector3 position =
+                        new Vector3(
+                            receivedMessage.x,
+                            receivedMessage.y,
+                            receivedMessage.z);
+
+                    OnPlayerMoved?.Invoke(
+                        receivedMessage.account_id,
+                        receivedMessage.login_name,
+                        position,
+                        receivedMessage.rotation_y);
+
+                    return;
+                }
+
+
 
 
 
@@ -165,12 +190,7 @@ public class MMOWebSocketClient : MonoBehaviour
             return;
         }
 
-        string loginName = "";
 
-        if (MMOSession.Instance != null)
-        {
-            loginName = MMOSession.Instance.LoginName;
-        }
 
         WebSocketMessage sendMessage =
             new WebSocketMessage
@@ -196,6 +216,43 @@ public class MMOWebSocketClient : MonoBehaviour
                 $"WebSocketëóêMé∏îs: {exception.Message}");
         }
     }
+
+    public async void SendPlayerMove(
+    Vector3 position,
+    float rotationY)
+    {
+        if (!IsConnected)
+        {
+            return;
+        }
+
+        WebSocketMessage sendMessage =
+            new WebSocketMessage
+            {
+                type = "player.move",
+                x = position.x,
+                y = position.y,
+                z = position.z,
+                rotation_y = rotationY,
+                sent_at = ""
+            };
+
+        string json =
+            JsonUtility.ToJson(sendMessage);
+
+        try
+        {
+            await websocket.SendText(json);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                $"Playerà⁄ìÆëóêMé∏îs: {exception.Message}");
+        }
+    }
+
+
+
 
     private async void OnDestroy()
     {
