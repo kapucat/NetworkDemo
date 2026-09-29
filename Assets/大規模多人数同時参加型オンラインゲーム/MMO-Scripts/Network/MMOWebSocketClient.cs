@@ -12,6 +12,11 @@ public class MMOWebSocketClient : MonoBehaviour
 
     public event Action<string, string, string>
         OnChatMessageReceived;
+    public event Action<long, string>
+    OnPlayerJoined;
+
+    public event Action<long, string>
+        OnPlayerLeft;
 
     public bool IsConnected =>
         websocket != null &&
@@ -21,6 +26,7 @@ public class MMOWebSocketClient : MonoBehaviour
     private class WebSocketMessage
     {
         public string type;
+        public long account_id;
         public string login_name;
         public string message;
         public string sent_at;
@@ -69,6 +75,12 @@ public class MMOWebSocketClient : MonoBehaviour
                 $"WebSocketØ’f: {closeCode}");
         };
 
+
+
+
+
+
+
         websocket.OnMessage += messageBytes =>
         {
             string json =
@@ -81,6 +93,10 @@ public class MMOWebSocketClient : MonoBehaviour
                 WebSocketMessage receivedMessage =
                     JsonUtility.FromJson<WebSocketMessage>(json);
 
+
+
+
+
                 if (receivedMessage == null)
                 {
                     return;
@@ -89,6 +105,27 @@ public class MMOWebSocketClient : MonoBehaviour
                 Debug.Log(
                     $"Ží—Þ: {receivedMessage.type} / " +
                     $"“à—e: {receivedMessage.message}");
+
+                if (receivedMessage.type == "player.join")
+                {
+                    OnPlayerJoined?.Invoke(
+                        receivedMessage.account_id,
+                        receivedMessage.login_name);
+
+                    return;
+                }
+
+                if (receivedMessage.type == "player.leave")
+                {
+                    OnPlayerLeft?.Invoke(
+                        receivedMessage.account_id,
+                        receivedMessage.login_name);
+
+                    return;
+                }
+
+
+
 
                 if (receivedMessage.type == "chat" ||
                     receivedMessage.type == "chat.message")

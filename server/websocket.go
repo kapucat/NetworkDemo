@@ -11,6 +11,7 @@ import (
 
 type WebSocketMessage struct {
 	Type      string `json:"type"`
+	AccountID int64  `json:"account_id,omitempty"`
 	LoginName string `json:"login_name,omitempty"`
 	Message   string `json:"message"`
 	SentAt    string `json:"sent_at"`
@@ -47,7 +48,26 @@ func (hub *Hub) run() {
 	for {
 		select {
 		case client := <-hub.register:
+			// すでに接続しているプレイヤーを
+			// 新しく入ってきたクライアントへ通知する。
+			for existingClient := range hub.clients {
+				client.send <- WebSocketMessage{
+					Type:      "player.join",
+					AccountID: existingClient.accountID,
+					LoginName: existingClient.loginName,
+					SentAt: time.Now().
+						UTC().
+						Format(time.RFC3339),
+				}
+			}
+
 			hub.clients[client] = true
+
+			log.Printf(
+				"websocket client registered: remote=%s total=%d",
+				client.remoteAddr,
+				len(hub.clients),
+			)
 
 			log.Printf(
 				"websocket client registered: remote=%s total=%d",
@@ -177,6 +197,15 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 
+	client.hub.broadcast <- WebSocketMessage{
+		Type:      "player.join",
+		AccountID: client.accountID,
+		LoginName: client.loginName,
+		SentAt: time.Now().
+			UTC().
+			Format(time.RFC3339),
+	}
+
 	connectedMessage := WebSocketMessage{
 		Type:    "connected",
 		Message: "websocket connected",
@@ -194,6 +223,15 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 func (client *Client) readPump() {
 	defer func() {
 		client.hub.unregister <- client
+
+		client.hub.broadcast <- WebSocketMessage{
+			Type:      "player.leave",
+			AccountID: client.accountID,
+			LoginName: client.loginName,
+			SentAt: time.Now().
+				UTC().
+				Format(time.RFC3339),
+		}
 
 		if err := client.connection.Close(); err != nil {
 			log.Println(
