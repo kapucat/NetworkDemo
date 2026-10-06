@@ -104,6 +104,19 @@ public class MMOPlayerWorld : MonoBehaviour
         remotePlayer.name =
             $"RemotePlayer_{loginName}_{accountId}";
 
+        MMONamePlate namePlate =
+            remotePlayer.GetComponentInChildren<MMONamePlate>(true);
+
+        if (namePlate != null)
+        {
+            namePlate.SetLoginName(loginName);
+        }
+        else
+        {
+            Debug.LogWarning(
+                $"MMONamePlate‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñ: {loginName}");
+        }
+
         remotePlayers.Add(
             accountId,
             remotePlayer);
