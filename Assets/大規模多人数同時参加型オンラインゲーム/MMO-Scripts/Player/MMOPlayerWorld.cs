@@ -32,6 +32,9 @@ public class MMOPlayerWorld : MonoBehaviour
 
         webSocketClient.OnPlayerLeft +=
             HandlePlayerLeft;
+
+        webSocketClient.OnPlayerMoved +=
+            HandlePlayerMoved;
     }
 
     private void OnDisable()
@@ -46,6 +49,9 @@ public class MMOPlayerWorld : MonoBehaviour
 
         webSocketClient.OnPlayerLeft -=
             HandlePlayerLeft;
+
+        webSocketClient.OnPlayerMoved -=
+            HandlePlayerMoved;  
     }
 
     private void HandlePlayerJoined(
@@ -125,5 +131,37 @@ public class MMOPlayerWorld : MonoBehaviour
         Debug.Log(
             $"RemotePlayerëﬁèo: " +
             $"{loginName} / {accountId}");
+    }
+
+    private void HandlePlayerMoved(
+        long accountId,
+        string loginName,
+        Vector3 position,
+        float rotationY)
+    {
+        if (MMOSession.Instance != null &&
+            accountId == MMOSession.Instance.AccountId)
+        {
+            return;
+        }
+
+        if (!remotePlayers.TryGetValue(
+                accountId,
+                out GameObject remotePlayer))
+        {
+            return;
+        }
+
+        MMORemotePlayer remoteController =
+            remotePlayer.GetComponent<MMORemotePlayer>();
+
+        if (remoteController == null)
+        {
+            return;
+        }
+
+        remoteController.SetNetworkState(
+            position,
+            rotationY);
     }
 }
