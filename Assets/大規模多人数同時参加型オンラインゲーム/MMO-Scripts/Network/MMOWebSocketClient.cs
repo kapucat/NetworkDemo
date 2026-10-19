@@ -6,7 +6,7 @@ using UnityEngine;
 public class MMOWebSocketClient : MonoBehaviour
 {
     [SerializeField]
-    private string serverUrl = "ws://localhost:8080/ws";
+    private string serverUrl = "ws://10.108.0.121:8080/ws";
 
     private WebSocket websocket;
 

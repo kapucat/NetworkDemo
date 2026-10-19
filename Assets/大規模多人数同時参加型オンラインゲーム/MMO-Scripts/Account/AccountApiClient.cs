@@ -8,7 +8,7 @@ public class AccountApiClient : MonoBehaviour
 {
     [SerializeField]
     private string registerUrl =
-        "http://localhost:8080/api/accounts/register";
+        "http://10.108.0.121:8080/api/accounts/register";
 
     [Serializable]
     private class RegisterRequest

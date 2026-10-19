@@ -8,7 +8,7 @@ public class LoginApiClient : MonoBehaviour
 {
     [SerializeField]
     private string loginUrl =
-        "http://localhost:8080/api/accounts/login";
+    "http://10.108.0.121:8080/api/accounts/login";
 
     [Serializable]
     private class LoginRequest
