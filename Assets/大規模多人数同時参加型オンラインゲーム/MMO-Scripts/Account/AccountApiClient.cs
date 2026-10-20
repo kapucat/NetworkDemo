@@ -6,10 +6,6 @@ using UnityEngine.Networking;
 
 public class AccountApiClient : MonoBehaviour
 {
-    [SerializeField]
-    private string registerUrl =
-        "http://10.108.0.121:8080/api/accounts/register";
-
     [Serializable]
     private class RegisterRequest
     {
@@ -39,29 +35,41 @@ public class AccountApiClient : MonoBehaviour
         byte[] body = Encoding.UTF8.GetBytes(json);
 
         using (UnityWebRequest request =
-               new UnityWebRequest(registerUrl, UnityWebRequest.kHttpVerbPOST))
+               new UnityWebRequest(
+                   MMOServerConfig.RegisterUrl,
+                   UnityWebRequest.kHttpVerbPOST))
         {
-            request.uploadHandler = new UploadHandlerRaw(body);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
+            request.uploadHandler =
+                new UploadHandlerRaw(body);
+
+            request.downloadHandler =
+                new DownloadHandlerBuffer();
+
+            request.SetRequestHeader(
+                "Content-Type",
+                "application/json");
+
             request.timeout = 10;
 
             yield return request.SendWebRequest();
 
             RegisterResponse response = null;
-            string responseText = request.downloadHandler.text;
+            string responseText =
+                request.downloadHandler.text;
 
             if (!string.IsNullOrWhiteSpace(responseText))
             {
                 try
                 {
                     response =
-                        JsonUtility.FromJson<RegisterResponse>(responseText);
+                        JsonUtility.FromJson<RegisterResponse>(
+                            responseText);
                 }
                 catch (Exception exception)
                 {
                     Debug.LogWarning(
-                        $"“o˜^API‚Ì‰ž“š‰ðÍ‚ÉŽ¸”s‚µ‚Ü‚µ‚½: {exception.Message}");
+                        $"“o˜^API‚Ì‰ž“š‰ðÍ‚ÉŽ¸”s‚µ‚Ü‚µ‚½: " +
+                        $"{exception.Message}");
                 }
             }
 
@@ -69,13 +77,15 @@ public class AccountApiClient : MonoBehaviour
                 request.responseCode >= 200 &&
                 request.responseCode < 300;
 
-            long accountId = response != null
-                ? response.account_id
-                : 0;
+            long accountId =
+                response != null
+                    ? response.account_id
+                    : 0;
 
-            string message = response != null
-                ? response.message
-                : "connection failed";
+            string message =
+                response != null
+                    ? response.message
+                    : "connection failed";
 
             if (!success)
             {
@@ -84,7 +94,10 @@ public class AccountApiClient : MonoBehaviour
                     $"HTTP {request.responseCode} / {message}");
             }
 
-            onCompleted?.Invoke(success, accountId, message);
+            onCompleted?.Invoke(
+                success,
+                accountId,
+                message);
         }
     }
 }
