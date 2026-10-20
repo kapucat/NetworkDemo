@@ -41,6 +41,10 @@ const (
 	maxPlayerCoordinate = 1000.0
 	maxPlayerSpeed      = 8.0
 	minMoveInterval     = 50 * time.Millisecond
+
+	pongWait   = 60 * time.Second
+	pingPeriod = 30 * time.Second
+	writeWait  = 10 * time.Second
 )
 
 func isFiniteNumber(value float64) bool {
@@ -335,6 +339,20 @@ func (client *Client) readPump() {
 		)
 	}()
 
+	client.connection.SetReadDeadline(
+		time.Now().Add(pongWait),
+	)
+
+	client.connection.SetPongHandler(
+		func(string) error {
+			client.connection.SetReadDeadline(
+				time.Now().Add(pongWait),
+			)
+
+			return nil
+		},
+	)
+
 	for {
 		var receivedMessage WebSocketMessage
 
@@ -441,16 +459,62 @@ func (client *Client) readPump() {
 }
 
 func (client *Client) writePump() {
-	for message := range client.send {
-		err := client.connection.WriteJSON(
-			message,
-		)
-		if err != nil {
-			log.Println(
-				"websocket write failed:",
-				err,
+	ticker :=
+		time.NewTicker(pingPeriod)
+
+	defer func() {
+		ticker.Stop()
+	}()
+
+	for {
+		select {
+		case message, ok := <-client.send:
+			client.connection.SetWriteDeadline(
+				time.Now().Add(writeWait),
 			)
-			return
+
+			if !ok {
+				client.connection.WriteMessage(
+					websocket.CloseMessage,
+					[]byte{},
+				)
+
+				return
+			}
+
+			err :=
+				client.connection.WriteJSON(
+					message,
+				)
+
+			if err != nil {
+				log.Println(
+					"websocket write failed:",
+					err,
+				)
+
+				return
+			}
+
+		case <-ticker.C:
+			client.connection.SetWriteDeadline(
+				time.Now().Add(writeWait),
+			)
+
+			err :=
+				client.connection.WriteMessage(
+					websocket.PingMessage,
+					nil,
+				)
+
+			if err != nil {
+				log.Println(
+					"websocket ping failed:",
+					err,
+				)
+
+				return
+			}
 		}
 	}
 }
