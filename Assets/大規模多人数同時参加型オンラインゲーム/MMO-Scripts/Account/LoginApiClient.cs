@@ -6,9 +6,7 @@ using UnityEngine.Networking;
 
 public class LoginApiClient : MonoBehaviour
 {
-    [SerializeField]
-    private string loginUrl =
-    "http://10.108.0.121:8080/api/accounts/login";
+
 
     [Serializable]
     private class LoginRequest
@@ -43,7 +41,9 @@ public class LoginApiClient : MonoBehaviour
         byte[] body = Encoding.UTF8.GetBytes(json);
 
         using UnityWebRequest request =
-            new UnityWebRequest(loginUrl, UnityWebRequest.kHttpVerbPOST);
+            new UnityWebRequest(
+                MMOServerConfig.LoginUrl,
+                UnityWebRequest.kHttpVerbPOST);
 
         request.uploadHandler = new UploadHandlerRaw(body);
         request.downloadHandler = new DownloadHandlerBuffer();
