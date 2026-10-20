@@ -5,21 +5,19 @@ using UnityEngine;
 
 public class MMOWebSocketClient : MonoBehaviour
 {
-    [SerializeField]
-    private string serverUrl = "ws://10.108.0.121:8080/ws";
-
     private WebSocket websocket;
 
     public event Action<string, string, string>
         OnChatMessageReceived;
+
     public event Action<long, string>
-    OnPlayerJoined;
+        OnPlayerJoined;
 
     public event Action<long, string>
         OnPlayerLeft;
-    
+
     public event Action<long, string, Vector3, float>
-    OnPlayerMoved;
+        OnPlayerMoved;
 
     public bool IsConnected =>
         websocket != null &&
@@ -48,14 +46,20 @@ public class MMOWebSocketClient : MonoBehaviour
         {
             Debug.LogError(
                 "ログインセッションが存在しないためWebSocketへ接続できません");
+
             return;
         }
 
         string sessionToken =
             MMOSession.Instance.SessionToken;
 
+        string serverUrl =
+            MMOServerConfig.WebSocketUrl;
+
         string separator =
-            serverUrl.Contains("?") ? "&" : "?";
+            serverUrl.Contains("?")
+                ? "&"
+                : "?";
 
         string authenticatedUrl =
             serverUrl +
@@ -65,6 +69,7 @@ public class MMOWebSocketClient : MonoBehaviour
 
         websocket =
             new WebSocket(authenticatedUrl);
+
         websocket.OnOpen += () =>
         {
             Debug.Log("WebSocket接続成功");
@@ -82,27 +87,19 @@ public class MMOWebSocketClient : MonoBehaviour
                 $"WebSocket切断: {closeCode}");
         };
 
-
-
-
-
-
-
         websocket.OnMessage += messageBytes =>
         {
             string json =
                 Encoding.UTF8.GetString(messageBytes);
 
-            Debug.Log($"WebSocket受信: {json}");
+            Debug.Log(
+                $"WebSocket受信: {json}");
 
             try
             {
                 WebSocketMessage receivedMessage =
-                    JsonUtility.FromJson<WebSocketMessage>(json);
-
-
-
-
+                    JsonUtility.FromJson<WebSocketMessage>(
+                        json);
 
                 if (receivedMessage == null)
                 {
@@ -148,10 +145,6 @@ public class MMOWebSocketClient : MonoBehaviour
                     return;
                 }
 
-
-
-
-
                 if (receivedMessage.type == "chat" ||
                     receivedMessage.type == "chat.message")
                 {
@@ -181,16 +174,16 @@ public class MMOWebSocketClient : MonoBehaviour
         }
     }
 
-    public async void SendChat(string message)
+    public async void SendChat(
+        string message)
     {
         if (!IsConnected)
         {
             Debug.LogWarning(
                 "WebSocketへ接続されていません");
+
             return;
         }
-
-
 
         WebSocketMessage sendMessage =
             new WebSocketMessage
@@ -213,13 +206,14 @@ public class MMOWebSocketClient : MonoBehaviour
         catch (Exception exception)
         {
             Debug.LogError(
-                $"WebSocket送信失敗: {exception.Message}");
+                $"WebSocket送信失敗: " +
+                $"{exception.Message}");
         }
     }
 
     public async void SendPlayerMove(
-    Vector3 position,
-    float rotationY)
+        Vector3 position,
+        float rotationY)
     {
         if (!IsConnected)
         {
@@ -247,12 +241,10 @@ public class MMOWebSocketClient : MonoBehaviour
         catch (Exception exception)
         {
             Debug.LogWarning(
-                $"Player移動送信失敗: {exception.Message}");
+                $"Player移動送信失敗: " +
+                $"{exception.Message}");
         }
     }
-
-
-
 
     private async void OnDestroy()
     {
