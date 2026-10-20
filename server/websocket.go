@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +29,90 @@ type Client struct {
 	remoteAddr string
 	accountID  int64
 	loginName  string
+
+	hasMoveState bool
+	lastMoveX    float64
+	lastMoveY    float64
+	lastMoveZ    float64
+	lastMoveAt   time.Time
+}
+
+const (
+	maxPlayerCoordinate = 1000.0
+	maxPlayerSpeed      = 8.0
+	minMoveInterval     = 50 * time.Millisecond
+)
+
+func isFiniteNumber(value float64) bool {
+	return !math.IsNaN(value) &&
+		!math.IsInf(value, 0)
+}
+
+func (client *Client) validatePlayerMove(
+	message WebSocketMessage,
+) bool {
+	if !isFiniteNumber(message.X) ||
+		!isFiniteNumber(message.Y) ||
+		!isFiniteNumber(message.Z) ||
+		!isFiniteNumber(message.RotationY) {
+		return false
+	}
+
+	if math.Abs(message.X) > maxPlayerCoordinate ||
+		math.Abs(message.Y) > maxPlayerCoordinate ||
+		math.Abs(message.Z) > maxPlayerCoordinate {
+		return false
+	}
+
+	now := time.Now()
+
+	if !client.hasMoveState {
+		client.hasMoveState = true
+		client.lastMoveX = message.X
+		client.lastMoveY = message.Y
+		client.lastMoveZ = message.Z
+		client.lastMoveAt = now
+
+		return true
+	}
+
+	elapsed :=
+		now.Sub(client.lastMoveAt)
+
+	if elapsed < minMoveInterval {
+		return false
+	}
+
+	deltaX :=
+		message.X - client.lastMoveX
+
+	deltaY :=
+		message.Y - client.lastMoveY
+
+	deltaZ :=
+		message.Z - client.lastMoveZ
+
+	distance :=
+		math.Sqrt(
+			deltaX*deltaX +
+				deltaY*deltaY +
+				deltaZ*deltaZ,
+		)
+
+	maxDistance :=
+		maxPlayerSpeed*elapsed.Seconds() +
+			0.5
+
+	if distance > maxDistance {
+		return false
+	}
+
+	client.lastMoveX = message.X
+	client.lastMoveY = message.Y
+	client.lastMoveZ = message.Z
+	client.lastMoveAt = now
+
+	return true
 }
 
 type Hub struct {
@@ -305,6 +390,31 @@ func (client *Client) readPump() {
 			}
 
 		case "player.move":
+			if !client.validatePlayerMove(
+				receivedMessage,
+			) {
+				log.Printf(
+					"invalid player move: "+
+						"account_id=%d "+
+						"x=%.3f y=%.3f z=%.3f rotation_y=%.3f",
+					client.accountID,
+					receivedMessage.X,
+					receivedMessage.Y,
+					receivedMessage.Z,
+					receivedMessage.RotationY,
+				)
+
+				client.send <- WebSocketMessage{
+					Type:    "error",
+					Message: "invalid player move",
+					SentAt: time.Now().
+						UTC().
+						Format(time.RFC3339),
+				}
+
+				continue
+			}
+
 			client.hub.broadcast <- WebSocketMessage{
 				Type:      "player.move",
 				AccountID: client.accountID,
