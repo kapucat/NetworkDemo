@@ -1,11 +1,18 @@
 using System;
 using System.Text;
+using System.Threading.Tasks;
 using NativeWebSocket;
 using UnityEngine;
 
 public class MMOWebSocketClient : MonoBehaviour
 {
     private WebSocket websocket;
+
+    private bool isConnecting;
+    private bool reconnectScheduled;
+    private bool isShuttingDown;
+
+    private const int ReconnectDelayMilliseconds = 3000;
 
     public event Action<string, string, string>
         OnChatMessageReceived;
@@ -50,126 +57,196 @@ public class MMOWebSocketClient : MonoBehaviour
             return;
         }
 
-        string sessionToken =
-            MMOSession.Instance.SessionToken;
+        await ConnectWebSocket();
+    }
 
-        string serverUrl =
-            MMOServerConfig.WebSocketUrl;
-
-        string separator =
-            serverUrl.Contains("?")
-                ? "&"
-                : "?";
-
-        string authenticatedUrl =
-            serverUrl +
-            separator +
-            "token=" +
-            Uri.EscapeDataString(sessionToken);
-
-        websocket =
-            new WebSocket(authenticatedUrl);
-
-        websocket.OnOpen += () =>
+    private async Task ConnectWebSocket()
+    {
+        if (isShuttingDown ||
+            isConnecting ||
+            IsConnected)
         {
-            Debug.Log("WebSocket接続成功");
-        };
+            return;
+        }
 
-        websocket.OnError += errorMessage =>
+        if (MMOSession.Instance == null ||
+            !MMOSession.Instance.IsLoggedIn)
         {
             Debug.LogError(
-                $"WebSocketエラー: {errorMessage}");
-        };
+                "ログインセッションが存在しないためWebSocketへ接続できません");
 
-        websocket.OnClose += closeCode =>
-        {
-            Debug.Log(
-                $"WebSocket切断: {closeCode}");
-        };
+            return;
+        }
 
-        websocket.OnMessage += messageBytes =>
-        {
-            string json =
-                Encoding.UTF8.GetString(messageBytes);
-
-            Debug.Log(
-                $"WebSocket受信: {json}");
-
-            try
-            {
-                WebSocketMessage receivedMessage =
-                    JsonUtility.FromJson<WebSocketMessage>(
-                        json);
-
-                if (receivedMessage == null)
-                {
-                    return;
-                }
-
-                Debug.Log(
-                    $"種類: {receivedMessage.type} / " +
-                    $"内容: {receivedMessage.message}");
-
-                if (receivedMessage.type == "player.join")
-                {
-                    OnPlayerJoined?.Invoke(
-                        receivedMessage.account_id,
-                        receivedMessage.login_name);
-
-                    return;
-                }
-
-                if (receivedMessage.type == "player.leave")
-                {
-                    OnPlayerLeft?.Invoke(
-                        receivedMessage.account_id,
-                        receivedMessage.login_name);
-
-                    return;
-                }
-
-                if (receivedMessage.type == "player.move")
-                {
-                    Vector3 position =
-                        new Vector3(
-                            receivedMessage.x,
-                            receivedMessage.y,
-                            receivedMessage.z);
-
-                    OnPlayerMoved?.Invoke(
-                        receivedMessage.account_id,
-                        receivedMessage.login_name,
-                        position,
-                        receivedMessage.rotation_y);
-
-                    return;
-                }
-
-                if (receivedMessage.type == "chat" ||
-                    receivedMessage.type == "chat.message")
-                {
-                    OnChatMessageReceived?.Invoke(
-                        receivedMessage.login_name,
-                        receivedMessage.message,
-                        receivedMessage.sent_at);
-                }
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning(
-                    $"WebSocketメッセージ解析失敗: " +
-                    $"{exception.Message}");
-            }
-        };
+        isConnecting = true;
 
         try
         {
+            string sessionToken =
+                MMOSession.Instance.SessionToken;
+
+            string serverUrl =
+                MMOServerConfig.WebSocketUrl;
+
+            string separator =
+                serverUrl.Contains("?")
+                    ? "&"
+                    : "?";
+
+            string authenticatedUrl =
+                serverUrl +
+                separator +
+                "token=" +
+                Uri.EscapeDataString(sessionToken);
+
+            websocket =
+                new WebSocket(authenticatedUrl);
+
+            websocket.OnOpen += () =>
+            {
+                reconnectScheduled = false;
+
+                Debug.Log(
+                    "WebSocket接続成功");
+            };
+
+            websocket.OnError += errorMessage =>
+            {
+                Debug.LogError(
+                    $"WebSocketエラー: {errorMessage}");
+            };
+
+            websocket.OnClose += closeCode =>
+            {
+                Debug.LogWarning(
+                    $"WebSocket切断: {closeCode}");
+
+                if (!isShuttingDown)
+                {
+                    _ = ScheduleReconnect();
+                }
+            };
+
+            websocket.OnMessage +=
+                HandleWebSocketMessage;
+
             await websocket.Connect();
         }
         catch (Exception exception)
         {
             Debug.LogError(
                 $"WebSocket接続処理に失敗しました: " +
+                $"{exception.Message}");
+
+            if (!isShuttingDown)
+            {
+                _ = ScheduleReconnect();
+            }
+        }
+        finally
+        {
+            isConnecting = false;
+        }
+    }
+
+    private async Task ScheduleReconnect()
+    {
+        if (isShuttingDown ||
+            reconnectScheduled)
+        {
+            return;
+        }
+
+        reconnectScheduled = true;
+
+        Debug.Log(
+            "3秒後にWebSocket再接続を試します");
+
+        await Task.Delay(
+            ReconnectDelayMilliseconds);
+
+        reconnectScheduled = false;
+
+        if (isShuttingDown)
+        {
+            return;
+        }
+
+        await ConnectWebSocket();
+    }
+
+    private void HandleWebSocketMessage(
+        byte[] messageBytes)
+    {
+        string json =
+            Encoding.UTF8.GetString(messageBytes);
+
+        Debug.Log(
+            $"WebSocket受信: {json}");
+
+        try
+        {
+            WebSocketMessage receivedMessage =
+                JsonUtility.FromJson<WebSocketMessage>(
+                    json);
+
+            if (receivedMessage == null)
+            {
+                return;
+            }
+
+            Debug.Log(
+                $"種類: {receivedMessage.type} / " +
+                $"内容: {receivedMessage.message}");
+
+            if (receivedMessage.type == "player.join")
+            {
+                OnPlayerJoined?.Invoke(
+                    receivedMessage.account_id,
+                    receivedMessage.login_name);
+
+                return;
+            }
+
+            if (receivedMessage.type == "player.leave")
+            {
+                OnPlayerLeft?.Invoke(
+                    receivedMessage.account_id,
+                    receivedMessage.login_name);
+
+                return;
+            }
+
+            if (receivedMessage.type == "player.move")
+            {
+                Vector3 position =
+                    new Vector3(
+                        receivedMessage.x,
+                        receivedMessage.y,
+                        receivedMessage.z);
+
+                OnPlayerMoved?.Invoke(
+                    receivedMessage.account_id,
+                    receivedMessage.login_name,
+                    position,
+                    receivedMessage.rotation_y);
+
+                return;
+            }
+
+            if (receivedMessage.type == "chat" ||
+                receivedMessage.type == "chat.message")
+            {
+                OnChatMessageReceived?.Invoke(
+                    receivedMessage.login_name,
+                    receivedMessage.message,
+                    receivedMessage.sent_at);
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                $"WebSocketメッセージ解析失敗: " +
                 $"{exception.Message}");
         }
     }
@@ -248,6 +325,9 @@ public class MMOWebSocketClient : MonoBehaviour
 
     private async void OnDestroy()
     {
+        isShuttingDown = true;
+        reconnectScheduled = false;
+
         if (websocket == null)
         {
             return;

@@ -162,12 +162,6 @@ func (hub *Hub) run() {
 				len(hub.clients),
 			)
 
-			log.Printf(
-				"websocket client registered: remote=%s total=%d",
-				client.remoteAddr,
-				len(hub.clients),
-			)
-
 		case client := <-hub.unregister:
 			if _, exists := hub.clients[client]; exists {
 				delete(hub.clients, client)
