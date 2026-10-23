@@ -20,21 +20,21 @@ export const options = {
 export default function () {
   const loginName = `mmo_bot_${__VU}`;
 
-  // Botアカウント作成。
-  // すでに存在する場合の409も正常扱いにする。
-  const registerResponse = http.post(
-    `${BASE_URL}/api/accounts/register`,
-    JSON.stringify({
-      login_name: loginName,
-      password: PASSWORD,
-    }),
-    {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-
+// Botアカウント作成。
+// すでに存在する場合の409も正常扱いにする。
+const registerResponse = http.post(
+  `${BASE_URL}/api/accounts/register`,
+  JSON.stringify({
+    login_name: loginName,
+    password: PASSWORD,
+  }),
+  {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    responseCallback: http.expectedStatuses(201, 409),
+  }
+);
   check(registerResponse, {
     'register succeeded or already exists': (response) =>
       response.status === 201 ||
