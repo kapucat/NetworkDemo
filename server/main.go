@@ -15,62 +15,62 @@ import (
 )
 
 type ScoreRequest struct {
-	PlayerName string  `json:"player_name"`
-	StageID    int     `json:"stage_id"`
-	ClearTime  float64 `json:"clear_time"`
-	DeathCount int     `json:"death_count"`
+	PlayerName string  `json:"player_name"` //プレイヤーの名前を表すフィールド
+	StageID    int     `json:"stage_id"`    //ステージのIDを表すフィールド
+	ClearTime  float64 `json:"clear_time"`  //クリアタイムを表すフィールド
+	DeathCount int     `json:"death_count"` //死亡回数を表すフィールド
 }
 
 type RankingResponse struct {
-	Rank       int     `json:"rank"`
-	PlayerName string  `json:"player_name"`
-	ClearTime  float64 `json:"clear_time"`
-	DeathCount int     `json:"death_count"`
+	Rank       int     `json:"rank"`        //ランキングの順位を表すフィールド
+	PlayerName string  `json:"player_name"` //プレイヤーの名前を表すフィールド
+	ClearTime  float64 `json:"clear_time"`  //クリアタイムを表すフィールド
+	DeathCount int     `json:"death_count"` //死亡回数を表すフィールド
 }
 
 type BestResponse struct {
-	PlayerName string  `json:"player_name"`
-	StageID    int     `json:"stage_id"`
-	BestTime   float64 `json:"best_time"`
-	DeathCount int     `json:"death_count"`
+	PlayerName string  `json:"player_name"` //プレイヤーの名前を表すフィールド
+	StageID    int     `json:"stage_id"`    //ステージのIDを表すフィールド
+	BestTime   float64 `json:"best_time"`   //ベストタイムを表すフィールド
+	DeathCount int     `json:"death_count"` //死亡回数を表すフィールド
 }
 
 type StatsResponse struct {
-	ServerStatus     string  `json:"server_status"`
-	DBStatus         string  `json:"db_status"`
-	StageID          int     `json:"stage_id"`
-	TotalScores      int     `json:"total_scores"`
-	PlayerCount      int     `json:"player_count"`
-	HasScores        bool    `json:"has_scores"`
-	BestTime         float64 `json:"best_time"`
-	LatestPlayer     string  `json:"latest_player"`
-	LatestTime       float64 `json:"latest_time"`
-	LatestDeathCount int     `json:"latest_death_count"`
+	ServerStatus     string  `json:"server_status"`      //サーバーのステータスを表すフィールド
+	DBStatus         string  `json:"db_status"`          //データベースのステータスを表すフィールド
+	StageID          int     `json:"stage_id"`           //ステージのIDを表すフィールド
+	TotalScores      int     `json:"total_scores"`       //総スコア数を表すフィールド
+	PlayerCount      int     `json:"player_count"`       //プレイヤーの数を表すフィールド
+	HasScores        bool    `json:"has_scores"`         //スコアが存在するかどうかを表すフィールド
+	BestTime         float64 `json:"best_time"`          //ベストタイムを表すフィールド
+	LatestPlayer     string  `json:"latest_player"`      //最新のプレイヤーの名前を表すフィールド
+	LatestTime       float64 `json:"latest_time"`        //最新のクリアタイムを表すフィールド
+	LatestDeathCount int     `json:"latest_death_count"` //最新の死亡回数を表すフィールド
 }
 
 var db *sql.DB
 
 func main() {
-	initDB()
-	initTables()
-	initAccountsTable()
-	initAccountSessionsTable()
-	defer db.Close()
+	initDB()                   // データベース接続を初期化
+	initTables()               // スコアテーブルを初期化
+	initAccountsTable()        // アカウントテーブルを初期化
+	initAccountSessionsTable() // アカウントセッションテーブルを初期化
+	defer db.Close()           // データベース接続を閉じる
 
 	go websocketHub.run()
 
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/api/accounts/register", accountRegisterHandler)
-	http.HandleFunc("/api/accounts/login", accountLoginHandler)
-	http.HandleFunc("/ws", websocketHandler)
-	http.HandleFunc("/api/scores", scoresHandler)
-	http.HandleFunc("/api/rankings", rankingsHandler)
-	http.HandleFunc("/api/best", bestHandler)
-	http.HandleFunc("/api/stats", statsHandler)
+	http.HandleFunc("/health", healthHandler)                         // ヘルスチェック用のエンドポイントを設定
+	http.HandleFunc("/api/accounts/register", accountRegisterHandler) // アカウント登録用のエンドポイントを設定
+	http.HandleFunc("/api/accounts/login", accountLoginHandler)       // アカウントログイン用のエンドポイントを設定
+	http.HandleFunc("/ws", websocketHandler)                          // WebSocket接続用のエンドポイントを設定
+	http.HandleFunc("/api/scores", scoresHandler)                     // スコア送信用のエンドポイントを設定
+	http.HandleFunc("/api/rankings", rankingsHandler)                 // ランキング取得用のエンドポイントを設定
+	http.HandleFunc("/api/best", bestHandler)                         // ベストスコア取得用のエンドポイントを設定
+	http.HandleFunc("/api/stats", statsHandler)                       // 統計情報取得用のエンドポイントを設定
 
-	log.Println("Go server started: http://localhost:8080")
+	log.Println("Go server started: http://localhost:8080") // サーバーの起動をログに出力
 
-	err := http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil) // HTTPサーバーを起動してリクエストを待機
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,6 +161,7 @@ INCLUDE (death_count);
 	log.Println("scores ranking index ready")
 }
 
+// ヘルスチェック用のハンドラー関数
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -176,12 +177,14 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// スコア送信用のハンドラー関数
 func scoresHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// リクエストボディからJSONをデコードしてScoreRequest構造体に格納
 	var score ScoreRequest
 
 	err := json.NewDecoder(r.Body).Decode(&score)
@@ -192,37 +195,37 @@ func scoresHandler(w http.ResponseWriter, r *http.Request) {
 
 	score.PlayerName = strings.TrimSpace(score.PlayerName)
 
-	if score.PlayerName == "" {
+	if score.PlayerName == "" { // プレイヤー名が空の場合はエラーを返す
 		http.Error(w, "player_name is required", http.StatusBadRequest)
 		return
 	}
 
-	if utf8.RuneCountInString(score.PlayerName) > 20 {
+	if utf8.RuneCountInString(score.PlayerName) > 20 { // プレイヤー名が20文字を超える場合はエラーを返す
 		http.Error(w, "player_name is too long", http.StatusBadRequest)
 		return
 	}
 
-	if score.StageID != 1 {
+	if score.StageID != 1 { // ステージIDが1以外の場合はエラーを返す
 		http.Error(w, "stage_id is invalid", http.StatusBadRequest)
 		return
 	}
 
-	if score.ClearTime <= 0 {
+	if score.ClearTime <= 0 { // クリアタイムが0以下の場合はエラーを返す
 		http.Error(w, "clear_time is invalid", http.StatusBadRequest)
 		return
 	}
 
-	if score.ClearTime > 600 {
+	if score.ClearTime > 600 { // クリアタイムが600秒を超える場合はエラーを返す
 		http.Error(w, "clear_time is too large", http.StatusBadRequest)
 		return
 	}
 
-	if score.DeathCount < 0 {
+	if score.DeathCount < 0 { // 死亡回数が0未満の場合はエラーを返す
 		http.Error(w, "death_count is invalid", http.StatusBadRequest)
 		return
 	}
 
-	if score.DeathCount > 999 {
+	if score.DeathCount > 999 { // 死亡回数が999を超える場合はエラーを返す
 		http.Error(w, "death_count is too large", http.StatusBadRequest)
 		return
 	}
@@ -244,6 +247,7 @@ func scoresHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// WebSocketでスコア更新を通知
 	log.Printf(
 		"score saved: player_name=%s stage_id=%d clear_time=%.2f death_count=%d",
 		score.PlayerName,
@@ -326,8 +330,15 @@ func rankingsHandler(w http.ResponseWriter, r *http.Request) {
 		rank++
 	}
 
+	if err := rows.Err(); err != nil {
+		log.Println("ranking rows iteration failed:", err)
+		http.Error(w, "ranking query failed", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(rankings)
+
 }
 
 func bestHandler(w http.ResponseWriter, r *http.Request) {

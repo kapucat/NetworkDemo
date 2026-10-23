@@ -1,16 +1,18 @@
 package main
 
 import (
-	"log"
-	"math"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
+	"log"      // ログ出力用
+	"math"     // 数学関数用
+	"net/http" // HTTPサーバー用
+	"strings"  // 文字列操作用
+	"sync"     // 同期用
+	"time"     // 時間操作用
 
-	"github.com/gorilla/websocket"
+	"github.com/gorilla/websocket" // WebSocket用
 )
 
+// WebSocket通信を扱うためのGo言語のコードです。WebSocketは、クライアントとサーバー間で双方向通信を可能にするプロトコル。
+// このコードでは、WebSocket接続の管理、メッセージの送受信、クライアントの登録・解除などの機能が実装されている。
 type WebSocketMessage struct {
 	Type      string  `json:"type"`
 	AccountID int64   `json:"account_id,omitempty"`
@@ -23,24 +25,24 @@ type WebSocketMessage struct {
 	SentAt    string  `json:"sent_at,omitempty"`
 }
 
+// Clientは、WebSocket接続を表す構造体です。各クライアントは、Hubに登録され、メッセージの送受信を行います。
 type Client struct {
-	hub        *Hub
-	connection *websocket.Conn
-	send       chan WebSocketMessage
-	remoteAddr string
-	accountID  int64
-	loginName  string
-
-	hasMoveState bool
-	lastMoveX    float64
-	lastMoveY    float64
-	lastMoveZ    float64
-	lastMoveAt   time.Time
-
-	sendMu     sync.Mutex
-	sendClosed bool
+	hub          *Hub                  // Hubへの参照。クライアントはHubを通じて他のクライアントと通信する。
+	connection   *websocket.Conn       // WebSocket接続。クライアントとの通信に使用される。
+	send         chan WebSocketMessage // 送信キュー。クライアントに送信するメッセージを格納するチャネル。
+	remoteAddr   string                // クライアントのリモートアドレス。接続元のIPアドレスやポート番号を保持する。
+	accountID    int64                 // クライアントのアカウントID。認証されたユーザーの識別子として使用される。
+	loginName    string                // クライアントのログイン名。認証されたユーザーの表示名として使用される。
+	hasMoveState bool                  // プレイヤーの移動状態を保持するフラグ。初回の移動メッセージを受信したかどうかを示す。
+	lastMoveX    float64               // プレイヤーの最後のX座標。移動メッセージの検証に使用される。
+	lastMoveY    float64               // プレイヤーの最後のY座標。移動メッセージの検証に使用される。
+	lastMoveZ    float64               // プレイヤーの最後のZ座標。移動メッセージの検証に使用される。
+	lastMoveAt   time.Time             // プレイヤーの最後の移動時刻。移動メッセージの検証に使用される。
+	sendMu       sync.Mutex            // 送信チャネルの操作を保護するためのミューテックス。複数のゴルーチンからの同時アクセスを防ぐ。
+	sendClosed   bool                  // 送信チャネルが閉じられたかどうかを示すフラグ。チャネルが閉じられた場合、送信操作は行わない。
 }
 
+// sendSafelyは、クライアントにメッセージを送信する際に、送信チャネルが閉じられていないかを確認し、安全に送信を行います。
 func (client *Client) sendSafely(
 	message WebSocketMessage,
 ) bool {
@@ -59,6 +61,7 @@ func (client *Client) sendSafely(
 	}
 }
 
+// closeSendは、クライアントの送信チャネルを閉じるためのメソッドです。送信チャネルがすでに閉じられている場合は何も行いません。
 func (client *Client) closeSend() {
 	client.sendMu.Lock()
 	defer client.sendMu.Unlock()
@@ -71,21 +74,23 @@ func (client *Client) closeSend() {
 	close(client.send)
 }
 
+// 定数の定義
 const (
-	maxPlayerCoordinate = 1000.0
-	maxPlayerSpeed      = 8.0
-	minMoveInterval     = 50 * time.Millisecond
-
-	pongWait   = 60 * time.Second
-	pingPeriod = 30 * time.Second
-	writeWait  = 10 * time.Second
+	maxPlayerCoordinate = 1000.0                // プレイヤーの座標の最大値。これを超える座標は無効とする。
+	maxPlayerSpeed      = 8.0                   // プレイヤーの最大移動速度（単位: メートル/秒）。これを超える移動は無効とする。
+	minMoveInterval     = 50 * time.Millisecond // プレイヤーの移動メッセージの最小間隔。これを下回る間隔での移動は無効とする。
+	pongWait            = 60 * time.Second      // Pongメッセージの待機時間。これを超えると接続が切断される。
+	pingPeriod          = 30 * time.Second      // Pingメッセージの送信間隔。これにより接続が生きているかを確認する。
+	writeWait           = 10 * time.Second      // WebSocketへの書き込みのタイムアウト時間。これを超えると書き込みが失敗する。
 )
 
+// isFiniteNumberは、与えられた浮動小数点数が有限の数値であるかどうかを判定する関数です。NaNや無限大の場合はfalseを返します。
 func isFiniteNumber(value float64) bool {
 	return !math.IsNaN(value) &&
 		!math.IsInf(value, 0)
 }
 
+// validatePlayerMoveは、クライアントの移動メッセージが有効かどうかを検証するメソッドです。座標の範囲や移動速度などをチェックします。
 func (client *Client) validatePlayerMove(
 	message WebSocketMessage,
 ) bool {
@@ -153,6 +158,7 @@ func (client *Client) validatePlayerMove(
 	return true
 }
 
+// Hubは、WebSocketクライアントの管理を行う構造体です。クライアントの登録・解除、メッセージのブロードキャストなどを担当します。
 type Hub struct {
 	clients    map[*Client]bool
 	register   chan *Client
@@ -160,6 +166,7 @@ type Hub struct {
 	broadcast  chan WebSocketMessage
 }
 
+// newHubは、新しいHubインスタンスを作成する関数です。クライアントのマップやチャネルを初期化します。
 func newHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
@@ -169,8 +176,10 @@ func newHub() *Hub {
 	}
 }
 
+// websocketHubは、グローバルなHubインスタンスです。すべてのWebSocketクライアントはこのHubを通じて管理されます。
 var websocketHub = newHub()
 
+// runは、Hubのメインループを実行するメソッドです。クライアントの登録・解除やメッセージのブロードキャストを処理します。
 func (hub *Hub) run() {
 	for {
 		select {
@@ -196,6 +205,7 @@ func (hub *Hub) run() {
 				len(hub.clients),
 			)
 
+		// クライアントの登録解除処理。Hubからクライアントを削除し、送信チャネルを閉じる。
 		case client := <-hub.unregister:
 			if _, exists := hub.clients[client]; exists {
 				delete(hub.clients, client)
@@ -207,6 +217,7 @@ func (hub *Hub) run() {
 				)
 			}
 
+		// ブロードキャストメッセージの処理。Hubに登録されているすべてのクライアントにメッセージを送信する。
 		case message := <-hub.broadcast:
 			for client := range hub.clients {
 				select {
@@ -229,6 +240,7 @@ func (hub *Hub) run() {
 	}
 }
 
+// websocketUpgraderは、WebSocket接続のアップグレードを行うための設定を持つ構造体です。バッファサイズやオリジンチェックなどを設定します。
 var websocketUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -240,6 +252,7 @@ var websocketUpgrader = websocket.Upgrader{
 	},
 }
 
+// websocketHandlerは、WebSocket接続のハンドラ関数です。クライアントの認証、接続のアップグレード、クライアントの登録などを行います。
 // GET /ws
 func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -268,6 +281,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	accountID, loginName, err :=
 		validateSessionToken(sessionToken)
 
+	// 認証に失敗した場合は、ログに記録してHTTP 401 Unauthorizedを返す。
 	if err != nil {
 		log.Printf(
 			"websocket authentication failed: remote=%s error=%v",
@@ -283,11 +297,14 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// WebSocket接続のアップグレードを試みる。失敗した場合は、ログに記録して処理を終了する。
 	connection, err := websocketUpgrader.Upgrade(
 		w,
 		r,
 		nil,
 	)
+
+	// 接続のアップグレードに失敗した場合は、ログに記録して処理を終了する。
 	if err != nil {
 		log.Println(
 			"websocket upgrade failed:",
@@ -338,6 +355,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	client.readPump()
 }
 
+// readPumpは、クライアントからのメッセージを受信するためのメソッドです。接続が切断されるまでループし、受信したメッセージを処理します。
 func (client *Client) readPump() {
 	defer func() {
 		client.hub.unregister <- client
@@ -368,6 +386,7 @@ func (client *Client) readPump() {
 		time.Now().Add(pongWait),
 	)
 
+	// Pongメッセージを受信した際に呼び出されるハンドラを設定する。Pongを受信したら、読み取りのタイムアウトを延長する。
 	client.connection.SetPongHandler(
 		func(string) error {
 			client.connection.SetReadDeadline(
@@ -378,6 +397,7 @@ func (client *Client) readPump() {
 		},
 	)
 
+	// クライアントからのメッセージを受信するループ。接続が切断されるまで継続する。
 	for {
 		var receivedMessage WebSocketMessage
 
@@ -401,6 +421,7 @@ func (client *Client) readPump() {
 
 		switch receivedMessage.Type {
 
+		// チャットメッセージの処理。メッセージが空でないか、長さが200文字以内かをチェックし、条件を満たす場合はブロードキャストする。
 		case "chat", "chat.send":
 			message :=
 				strings.TrimSpace(
@@ -431,6 +452,7 @@ func (client *Client) readPump() {
 					Format(time.RFC3339),
 			}
 
+		// プレイヤーの移動メッセージの処理。移動が有効かどうかを検証し、条件を満たす場合はブロードキャストする。
 		case "player.move":
 			if !client.validatePlayerMove(
 				receivedMessage,
@@ -480,6 +502,7 @@ func (client *Client) readPump() {
 	}
 }
 
+// writePumpは、クライアントへのメッセージ送信を行うためのメソッドです。送信キューからメッセージを取り出し、WebSocket接続に書き込みます。
 func (client *Client) writePump() {
 	ticker :=
 		time.NewTicker(pingPeriod)
@@ -490,6 +513,8 @@ func (client *Client) writePump() {
 
 	for {
 		select {
+
+		// クライアントの送信キューからメッセージを受信し、WebSocket接続に書き込む。送信キューが閉じられている場合は、接続を閉じる。
 		case message, ok := <-client.send:
 			client.connection.SetWriteDeadline(
 				time.Now().Add(writeWait),
@@ -518,6 +543,7 @@ func (client *Client) writePump() {
 				return
 			}
 
+		// 定期的にPingメッセージを送信して、接続が生きているか確認する。Pongが返ってこない場合は接続を切断する。
 		case <-ticker.C:
 			client.connection.SetWriteDeadline(
 				time.Now().Add(writeWait),
