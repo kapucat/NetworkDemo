@@ -299,7 +299,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		hub:        websocketHub,
 		connection: connection,
-		send:       make(chan WebSocketMessage, 64),
+		send:       make(chan WebSocketMessage, 256),
 		remoteAddr: r.RemoteAddr,
 		accountID:  accountID,
 		loginName:  loginName,
