@@ -333,8 +333,7 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 			Format(time.RFC3339),
 	}
 
-	client.send <- connectedMessage
-
+	client.sendSafely(connectedMessage)
 	// この処理は切断されるまで継続する。
 	client.readPump()
 }
