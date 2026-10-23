@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -35,6 +36,39 @@ type Client struct {
 	lastMoveY    float64
 	lastMoveZ    float64
 	lastMoveAt   time.Time
+
+	sendMu     sync.Mutex
+	sendClosed bool
+}
+
+func (client *Client) sendSafely(
+	message WebSocketMessage,
+) bool {
+	client.sendMu.Lock()
+	defer client.sendMu.Unlock()
+
+	if client.sendClosed {
+		return false
+	}
+
+	select {
+	case client.send <- message:
+		return true
+	default:
+		return false
+	}
+}
+
+func (client *Client) closeSend() {
+	client.sendMu.Lock()
+	defer client.sendMu.Unlock()
+
+	if client.sendClosed {
+		return
+	}
+
+	client.sendClosed = true
+	close(client.send)
 }
 
 const (
@@ -165,8 +199,7 @@ func (hub *Hub) run() {
 		case client := <-hub.unregister:
 			if _, exists := hub.clients[client]; exists {
 				delete(hub.clients, client)
-				close(client.send)
-
+				client.closeSend()
 				log.Printf(
 					"websocket client unregistered: remote=%s total=%d",
 					client.remoteAddr,
@@ -183,8 +216,7 @@ func (hub *Hub) run() {
 					// 送信キューが詰まったクライアントは
 					// Hubから外して接続を閉じる。
 					delete(hub.clients, client)
-					close(client.send)
-
+					client.closeSend()
 					if err := client.connection.Close(); err != nil {
 						log.Println(
 							"websocket close failed:",
@@ -381,13 +413,12 @@ func (client *Client) readPump() {
 			}
 
 			if len([]rune(message)) > 200 {
-				client.send <- WebSocketMessage{
-					Type:    "error",
+				client.sendSafely(WebSocketMessage{Type: "error",
 					Message: "message is too long",
 					SentAt: time.Now().
 						UTC().
 						Format(time.RFC3339),
-				}
+				})
 				continue
 			}
 
@@ -416,13 +447,12 @@ func (client *Client) readPump() {
 					receivedMessage.RotationY,
 				)
 
-				client.send <- WebSocketMessage{
-					Type:    "error",
+				client.sendSafely(WebSocketMessage{Type: "error",
 					Message: "invalid player move",
 					SentAt: time.Now().
 						UTC().
 						Format(time.RFC3339),
-				}
+				})
 
 				continue
 			}
@@ -441,13 +471,12 @@ func (client *Client) readPump() {
 			}
 
 		default:
-			client.send <- WebSocketMessage{
-				Type:    "error",
+			client.sendSafely(WebSocketMessage{Type: "error",
 				Message: "unsupported message type",
 				SentAt: time.Now().
 					UTC().
 					Format(time.RFC3339),
-			}
+			})
 		}
 	}
 }
