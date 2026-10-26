@@ -123,6 +123,11 @@ func (client *Client) validatePlayerMove(
 		now.Sub(client.lastMoveAt)
 
 	if elapsed < minMoveInterval {
+		log.Printf(
+			"player.move rejected: reason=too_frequent account_id=%d elapsed_ms=%.2f",
+			client.accountID,
+			float64(elapsed)/float64(time.Millisecond),
+		)
 		return false
 	}
 
