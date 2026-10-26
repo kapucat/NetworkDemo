@@ -108,7 +108,7 @@ if (plannedClose ||
             y: 0,
             z: 0,
             rotation_y: 0,
-            sent_at: '',
+            sent_at: new Date(now).toISOString(), // サーバー側での遅延計測用
           }));
           sent += 1;
           lastSentAt = now;
