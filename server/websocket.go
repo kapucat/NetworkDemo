@@ -485,6 +485,8 @@ func (client *Client) readPump() {
 				continue
 			}
 
+			broadcastStart := time.Now()
+
 			client.hub.broadcast <- WebSocketMessage{
 				Type:      "player.move",
 				AccountID: client.accountID,
@@ -493,9 +495,17 @@ func (client *Client) readPump() {
 				Y:         receivedMessage.Y,
 				Z:         receivedMessage.Z,
 				RotationY: receivedMessage.RotationY,
-				SentAt: time.Now().
-					UTC().
-					Format(time.RFC3339),
+				SentAt:    time.Now().UTC().Format(time.RFC3339),
+			}
+
+			broadcastWait := time.Since(broadcastStart)
+
+			if broadcastWait >= 50*time.Millisecond {
+				log.Printf(
+					"player.move hub_wait: account_id=%d wait_ms=%.2f",
+					client.accountID,
+					float64(broadcastWait)/float64(time.Millisecond),
+				)
 			}
 
 		default:
