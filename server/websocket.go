@@ -191,7 +191,9 @@ func (hub *Hub) run() {
 	for {
 		select {
 		case client := <-hub.register:
-			// すでに接続しているプレイヤーを
+			registerStart := time.Now()
+
+			// すでに接続しているプレイヤーを			// すでに接続しているプレイヤーを
 			// 新しく入ってきたクライアントへ通知する。
 			for existingClient := range hub.clients {
 				client.send <- WebSocketMessage{
@@ -205,6 +207,17 @@ func (hub *Hub) run() {
 			}
 
 			hub.clients[client] = true
+
+			registerDuration := time.Since(registerStart)
+
+			if registerDuration >= 50*time.Millisecond {
+				log.Printf(
+					"websocket register_slow: account_id=%d duration_ms=%.2f total=%d",
+					client.accountID,
+					float64(registerDuration)/float64(time.Millisecond),
+					len(hub.clients),
+				)
+			}
 
 			log.Printf(
 				"websocket client registered: remote=%s total=%d",
