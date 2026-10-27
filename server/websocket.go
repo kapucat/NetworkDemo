@@ -27,19 +27,21 @@ type WebSocketMessage struct {
 
 // Clientは、WebSocket接続を表す構造体です。各クライアントは、Hubに登録され、メッセージの送受信を行います。
 type Client struct {
-	hub          *Hub                  // Hubへの参照。クライアントはHubを通じて他のクライアントと通信する。
-	connection   *websocket.Conn       // WebSocket接続。クライアントとの通信に使用される。
-	send         chan WebSocketMessage // 送信キュー。クライアントに送信するメッセージを格納するチャネル。
-	remoteAddr   string                // クライアントのリモートアドレス。接続元のIPアドレスやポート番号を保持する。
-	accountID    int64                 // クライアントのアカウントID。認証されたユーザーの識別子として使用される。
-	loginName    string                // クライアントのログイン名。認証されたユーザーの表示名として使用される。
-	hasMoveState bool                  // プレイヤーの移動状態を保持するフラグ。初回の移動メッセージを受信したかどうかを示す。
-	lastMoveX    float64               // プレイヤーの最後のX座標。移動メッセージの検証に使用される。
-	lastMoveY    float64               // プレイヤーの最後のY座標。移動メッセージの検証に使用される。
-	lastMoveZ    float64               // プレイヤーの最後のZ座標。移動メッセージの検証に使用される。
-	lastMoveAt   time.Time             // プレイヤーの最後の移動時刻。移動メッセージの検証に使用される。
-	sendMu       sync.Mutex            // 送信チャネルの操作を保護するためのミューテックス。複数のゴルーチンからの同時アクセスを防ぐ。
-	sendClosed   bool                  // 送信チャネルが閉じられたかどうかを示すフラグ。チャネルが閉じられた場合、送信操作は行わない。
+	hub               *Hub                  // Hubへの参照。クライアントはHubを通じて他のクライアントと通信する。
+	connection        *websocket.Conn       // WebSocket接続。クライアントとの通信に使用される。
+	send              chan WebSocketMessage // 送信キュー。クライアントに送信するメッセージを格納するチャネル。
+	remoteAddr        string                // クライアントのリモートアドレス。接続元のIPアドレスやポート番号を保持する。
+	accountID         int64                 // クライアントのアカウントID。認証されたユーザーの識別子として使用される。
+	loginName         string                // クライアントのログイン名。認証されたユーザーの表示名として使用される。
+	hasMoveState      bool                  // プレイヤーの移動状態を保持するフラグ。初回の移動メッセージを受信したかどうかを示す。
+	lastMoveX         float64               // プレイヤーの最後のX座標。移動メッセージの検証に使用される。
+	lastMoveY         float64               // プレイヤーの最後のY座標。移動メッセージの検証に使用される。
+	lastMoveZ         float64               // プレイヤーの最後のZ座標。移動メッセージの検証に使用される。
+	lastMoveAt        time.Time             // プレイヤーの最後の移動時刻。移動メッセージの検証に使用される。
+	moveTokens        float64
+	lastTokenRefillAt time.Time
+	sendMu            sync.Mutex // 送信チャネルの操作を保護するためのミューテックス。複数のゴルーチンからの同時アクセスを防ぐ。
+	sendClosed        bool       // 送信チャネルが閉じられたかどうかを示すフラグ。チャネルが閉じられた場合、送信操作は行わない。
 }
 
 // sendSafelyは、クライアントにメッセージを送信する際に、送信チャネルが閉じられていないかを確認し、安全に送信を行います。
