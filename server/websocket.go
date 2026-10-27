@@ -118,6 +118,9 @@ func (client *Client) validatePlayerMove(
 		client.lastMoveZ = message.Z
 		client.lastMoveAt = now
 
+		client.moveTokens = 3.0
+		client.lastTokenRefillAt = now
+
 		return true
 	}
 
