@@ -124,6 +124,15 @@ func (client *Client) validatePlayerMove(
 		return true
 	}
 
+	refillElapsed := now.Sub(client.lastTokenRefillAt)
+
+	client.moveTokens = math.Min(
+		4.0,
+		client.moveTokens+refillElapsed.Seconds()/minMoveInterval.Seconds(),
+	)
+
+	client.lastTokenRefillAt = now
+
 	elapsed :=
 		now.Sub(client.lastMoveAt)
 
