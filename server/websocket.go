@@ -439,6 +439,24 @@ func (client *Client) readPump() {
 			return
 		}
 
+		if receivedMessage.Type == "player.move" && receivedMessage.SentAt != "" {
+			sentAt, err := time.Parse(time.RFC3339Nano, receivedMessage.SentAt)
+			if err == nil {
+				receivedAt := time.Now().UTC()
+				lag := receivedAt.Sub(sentAt)
+
+				if lag >= 150*time.Millisecond {
+					log.Printf(
+						"player.move read_lag: account_id=%d lag_ms=%.2f sent_at=%s received_at=%s",
+						client.accountID,
+						float64(lag)/float64(time.Millisecond),
+						receivedMessage.SentAt,
+						receivedAt.Format(time.RFC3339Nano),
+					)
+				}
+			}
+		}
+
 		switch receivedMessage.Type {
 
 		// チャットメッセージの処理。メッセージが空でないか、長さが200文字以内かをチェックし、条件を満たす場合はブロードキャストする。
