@@ -99,7 +99,7 @@ func (client *Client) validatePlayerMove(
 	message WebSocketMessage,
 ) bool {
 	const (
-		maxBurstMoves     = 4.0
+		maxBurstMoves     = 12.0
 		movementTolerance = 0.5
 		maxBurstSeconds   = 0.5
 	)
