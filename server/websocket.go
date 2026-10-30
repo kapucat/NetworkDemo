@@ -27,21 +27,22 @@ type WebSocketMessage struct {
 
 // Clientは、WebSocket接続を表す構造体です。各クライアントは、Hubに登録され、メッセージの送受信を行います。
 type Client struct {
-	hub               *Hub                  // Hubへの参照。クライアントはHubを通じて他のクライアントと通信する。
-	connection        *websocket.Conn       // WebSocket接続。クライアントとの通信に使用される。
-	send              chan WebSocketMessage // 送信キュー。クライアントに送信するメッセージを格納するチャネル。
-	remoteAddr        string                // クライアントのリモートアドレス。接続元のIPアドレスやポート番号を保持する。
-	accountID         int64                 // クライアントのアカウントID。認証されたユーザーの識別子として使用される。
-	loginName         string                // クライアントのログイン名。認証されたユーザーの表示名として使用される。
-	hasMoveState      bool                  // プレイヤーの移動状態を保持するフラグ。初回の移動メッセージを受信したかどうかを示す。
-	lastMoveX         float64               // プレイヤーの最後のX座標。移動メッセージの検証に使用される。
-	lastMoveY         float64               // プレイヤーの最後のY座標。移動メッセージの検証に使用される。
-	lastMoveZ         float64               // プレイヤーの最後のZ座標。移動メッセージの検証に使用される。
-	lastMoveAt        time.Time             // プレイヤーの最後の移動時刻。移動メッセージの検証に使用される。
-	moveTokens        float64
-	lastTokenRefillAt time.Time
-	sendMu            sync.Mutex // 送信チャネルの操作を保護するためのミューテックス。複数のゴルーチンからの同時アクセスを防ぐ。
-	sendClosed        bool       // 送信チャネルが閉じられたかどうかを示すフラグ。チャネルが閉じられた場合、送信操作は行わない。
+	hub                *Hub                  // Hubへの参照。クライアントはHubを通じて他のクライアントと通信する。
+	connection         *websocket.Conn       // WebSocket接続。クライアントとの通信に使用される。
+	send               chan WebSocketMessage // 送信キュー。クライアントに送信するメッセージを格納するチャネル。
+	remoteAddr         string                // クライアントのリモートアドレス。接続元のIPアドレスやポート番号を保持する。
+	accountID          int64                 // クライアントのアカウントID。認証されたユーザーの識別子として使用される。
+	loginName          string                // クライアントのログイン名。認証されたユーザーの表示名として使用される。
+	hasMoveState       bool                  // プレイヤーの移動状態を保持するフラグ。初回の移動メッセージを受信したかどうかを示す。
+	lastMoveX          float64               // プレイヤーの最後のX座標。移動メッセージの検証に使用される。
+	lastMoveY          float64               // プレイヤーの最後のY座標。移動メッセージの検証に使用される。
+	lastMoveZ          float64               // プレイヤーの最後のZ座標。移動メッセージの検証に使用される。
+	lastMoveAt         time.Time             // プレイヤーの最後の移動時刻。移動メッセージの検証に使用される。
+	moveTokens         float64
+	moveDistanceCredit float64
+	lastTokenRefillAt  time.Time
+	sendMu             sync.Mutex // 送信チャネルの操作を保護するためのミューテックス。複数のゴルーチンからの同時アクセスを防ぐ。
+	sendClosed         bool       // 送信チャネルが閉じられたかどうかを示すフラグ。チャネルが閉じられた場合、送信操作は行わない。
 }
 
 // sendSafelyは、クライアントにメッセージを送信する際に、送信チャネルが閉じられていないかを確認し、安全に送信を行います。
@@ -93,9 +94,17 @@ func isFiniteNumber(value float64) bool {
 }
 
 // validatePlayerMoveは、クライアントの移動メッセージが有効かどうかを検証するメソッドです。座標の範囲や移動速度などをチェックします。
+
 func (client *Client) validatePlayerMove(
 	message WebSocketMessage,
 ) bool {
+	const (
+		maxBurstMoves     = 4.0
+		movementTolerance = 0.5
+		maxBurstSeconds   = 0.5
+	)
+
+	// 数値と座標の検証
 	if !isFiniteNumber(message.X) ||
 		!isFiniteNumber(message.Y) ||
 		!isFiniteNumber(message.Z) ||
@@ -111,6 +120,7 @@ func (client *Client) validatePlayerMove(
 
 	now := time.Now()
 
+	// 初回移動を基準位置とする
 	if !client.hasMoveState {
 		client.hasMoveState = true
 		client.lastMoveX = message.X
@@ -118,24 +128,37 @@ func (client *Client) validatePlayerMove(
 		client.lastMoveZ = message.Z
 		client.lastMoveAt = now
 
-		client.moveTokens = 3.0
+		client.moveTokens = maxBurstMoves - 1.0
+		client.moveDistanceCredit = movementTolerance
 		client.lastTokenRefillAt = now
 
 		return true
 	}
 
-	refillElapsed := now.Sub(client.lastTokenRefillAt)
+	// サーバー時刻だけを使って許可量を回復する
+	seconds := now.Sub(client.lastTokenRefillAt).Seconds()
+	if seconds < 0 {
+		seconds = 0
+	}
 
 	client.moveTokens = math.Min(
-		4.0,
-		client.moveTokens+refillElapsed.Seconds()/minMoveInterval.Seconds(),
+		maxBurstMoves,
+		client.moveTokens+seconds/minMoveInterval.Seconds(),
+	)
+
+	// 距離の許可量も経過時間に応じて回復する
+	// 長時間の停止後でも無制限には蓄積しない
+	maxDistanceCredit := maxPlayerSpeed*maxBurstSeconds +
+		movementTolerance
+
+	client.moveDistanceCredit = math.Min(
+		maxDistanceCredit,
+		client.moveDistanceCredit+maxPlayerSpeed*seconds,
 	)
 
 	client.lastTokenRefillAt = now
 
-	elapsed :=
-		now.Sub(client.lastMoveAt)
-
+	// 回数制限
 	if client.moveTokens < 1.0 {
 		log.Printf(
 			"player.move rejected: reason=rate_limited account_id=%d tokens=%.2f sent_at=%s server_at=%s",
@@ -147,31 +170,31 @@ func (client *Client) validatePlayerMove(
 		return false
 	}
 
-	client.moveTokens -= 1.0
+	// 移動距離を計算
+	deltaX := message.X - client.lastMoveX
+	deltaY := message.Y - client.lastMoveY
+	deltaZ := message.Z - client.lastMoveZ
 
-	deltaX :=
-		message.X - client.lastMoveX
+	distance := math.Sqrt(
+		deltaX*deltaX +
+			deltaY*deltaY +
+			deltaZ*deltaZ,
+	)
 
-	deltaY :=
-		message.Y - client.lastMoveY
-
-	deltaZ :=
-		message.Z - client.lastMoveZ
-
-	distance :=
-		math.Sqrt(
-			deltaX*deltaX +
-				deltaY*deltaY +
-				deltaZ*deltaZ,
+	// 累積移動距離をサーバー時刻ベースで制限
+	if distance > client.moveDistanceCredit {
+		log.Printf(
+			"player.move rejected: reason=too_fast account_id=%d distance=%.3f credit=%.3f",
+			client.accountID,
+			distance,
+			client.moveDistanceCredit,
 		)
-
-	maxDistance :=
-		maxPlayerSpeed*elapsed.Seconds() +
-			0.5
-
-	if distance > maxDistance {
 		return false
 	}
+
+	// 全検証を通過してから許可量を消費
+	client.moveTokens -= 1.0
+	client.moveDistanceCredit -= distance
 
 	client.lastMoveX = message.X
 	client.lastMoveY = message.Y
