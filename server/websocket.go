@@ -1,12 +1,13 @@
 package main
 
 import (
-	"log"      // ログ出力用
-	"math"     // 数学関数用
-	"net/http" // HTTPサーバー用
-	"strings"  // 文字列操作用
-	"sync"     // 同期用
-	"time"     // 時間操作用
+	"encoding/json" // JSONエンコード・デコード用
+	"log"           // ログ出力用
+	"math"          // 数学関数用
+	"net/http"      // HTTPサーバー用
+	"strings"       // 文字列操作用
+	"sync"          // 同期用
+	"time"          // 時間操作用
 
 	"github.com/gorilla/websocket" // WebSocket用
 )
@@ -23,6 +24,7 @@ type WebSocketMessage struct {
 	Z         float64 `json:"z,omitempty"`
 	RotationY float64 `json:"rotation_y,omitempty"`
 	SentAt    string  `json:"sent_at,omitempty"`
+	encoded   []byte  // ブロードキャスト用のJSONデータ
 }
 
 // Clientは、WebSocket接続を表す構造体です。各クライアントは、Hubに登録され、メッセージの送受信を行います。
@@ -276,8 +278,17 @@ func (hub *Hub) run() {
 				)
 			}
 
-		// ブロードキャストメッセージの処理。Hubに登録されているすべてのクライアントにメッセージを送信する。
+			// ブロードキャストメッセージの処理。Hubに登録されているすべてのクライアントにメッセージを送信する。
 		case message := <-hub.broadcast:
+			// 送信先ごとではなく、メッセージごとに1回だけJSON変換する。
+			payload, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("websocket broadcast marshal failed: %v", err)
+				continue
+			}
+
+			message.encoded = payload
+
 			for client := range hub.clients {
 				select {
 				case client.send <- message:
@@ -286,6 +297,16 @@ func (hub *Hub) run() {
 					// 送信キューが詰まったクライアントは
 					// Hubから外して接続を閉じる。
 					delete(hub.clients, client)
+
+					log.Printf(
+						"websocket send_queue_full: account_id=%d queue=%d/%d total_clients=%d message_type=%s",
+						client.accountID,
+						len(client.send),
+						cap(client.send),
+						len(hub.clients),
+						message.Type,
+					)
+
 					client.closeSend()
 					if err := client.connection.Close(); err != nil {
 						log.Println(
@@ -616,10 +637,18 @@ func (client *Client) writePump() {
 				return
 			}
 
-			err :=
-				client.connection.WriteJSON(
-					message,
+			var err error
+
+			if len(message.encoded) > 0 {
+				// Hubで変換済みのデータをそのまま送信する。
+				err = client.connection.WriteMessage(
+					websocket.TextMessage,
+					message.encoded,
 				)
+			} else {
+				// 個別通知などは従来どおり送信する。
+				err = client.connection.WriteJSON(message)
+			}
 
 			if err != nil {
 				log.Println(
