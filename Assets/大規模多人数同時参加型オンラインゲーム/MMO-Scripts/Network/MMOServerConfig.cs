@@ -6,7 +6,8 @@ public static class MMOServerConfig
     private const string Host = "10.108.0.104";
 #endif
 
-    private const int Port = 8080;
+    //private const int Port = 8080;
+    private const int Port = 8081;
 
     public static string LoginUrl =>
         $"http://{Host}:{Port}/api/accounts/login";
@@ -15,5 +16,5 @@ public static class MMOServerConfig
         $"http://{Host}:{Port}/api/accounts/register";
 
     public static string WebSocketUrl =>
-        $"ws://{Host}:{Port}/ws";
+        $"ws://{Host}:{Port}/ws";   
 }
