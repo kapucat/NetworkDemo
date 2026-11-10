@@ -3,7 +3,7 @@ public static class MMOServerConfig
 #if UNITY_EDITOR
     private const string Host = "localhost";
 #else
-    private const string Host = "10.108.0.104";
+    private const string Host = "localhost";
 #endif
 
     //private const int Port = 8080;
