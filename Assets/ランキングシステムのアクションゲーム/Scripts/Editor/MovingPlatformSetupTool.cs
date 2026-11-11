@@ -16,7 +16,7 @@ public class MovingPlatformSetupTool : EditorWindow
     private bool disableChildColliders = true;
     private bool disableChildAnimators = true;
 
-    [MenuItem("Tools/Hook Runner/Moving Platform Setup Tool")]
+    [MenuItem("Tools/ネットワークDemo/Moving Platform Setup Tool")]
     public static void Open()
     {
         GetWindow<MovingPlatformSetupTool>("Moving Platform Setup");

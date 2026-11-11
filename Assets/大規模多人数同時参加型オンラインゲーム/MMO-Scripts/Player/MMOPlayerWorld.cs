@@ -3,11 +3,11 @@ using UnityEngine;
 
 public class MMOPlayerWorld : MonoBehaviour
 {
-    [Header("’ÊM")]
+    [Header("é€šä¿¡")]
     [SerializeField]
     private MMOWebSocketClient webSocketClient;
 
-    [Header("ƒvƒŒƒCƒ„[")]
+    [Header("ãƒ—ãƒ¬ã‚¤ãƒ¤ãƒ¼")]
     [SerializeField]
     private Transform localPlayer;
 
@@ -58,14 +58,14 @@ public class MMOPlayerWorld : MonoBehaviour
         long accountId,
         string loginName)
     {
-        // ©•ª©g‚Í¶¬‚µ‚È‚¢
+        // è‡ªåˆ†è‡ªèº«ã¯ç”Ÿæˆã—ãªã„
         if (MMOSession.Instance != null &&
             accountId == MMOSession.Instance.AccountId)
         {
             return;
         }
 
-        // ‚·‚Å‚É‘¶İ‚·‚é‚È‚ç‰½‚à‚µ‚È‚¢
+        // ã™ã§ã«å­˜åœ¨ã™ã‚‹ãªã‚‰ä½•ã‚‚ã—ãªã„
         if (remotePlayers.ContainsKey(accountId))
         {
             return;
@@ -74,7 +74,7 @@ public class MMOPlayerWorld : MonoBehaviour
         if (remotePlayerPrefab == null)
         {
             Debug.LogWarning(
-                "RemotePlayerPrefab‚ªİ’è‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ");
+                "RemotePlayerPrefabãŒè¨­å®šã•ã‚Œã¦ã„ã¾ã›ã‚“");
             return;
         }
 
@@ -114,16 +114,13 @@ public class MMOPlayerWorld : MonoBehaviour
         else
         {
             Debug.LogWarning(
-                $"MMONamePlate‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñ: {loginName}");
+                $"MMONamePlateãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“: {loginName}");
         }
 
         remotePlayers.Add(
             accountId,
             remotePlayer);
 
-        Debug.Log(
-            $"RemotePlayerQ‰Á: " +
-            $"{loginName} / {accountId}");
     }
 
     private void HandlePlayerLeft(
@@ -141,9 +138,6 @@ public class MMOPlayerWorld : MonoBehaviour
 
         remotePlayers.Remove(accountId);
 
-        Debug.Log(
-            $"RemotePlayer‘Şo: " +
-            $"{loginName} / {accountId}");
     }
 
     private void HandlePlayerMoved(

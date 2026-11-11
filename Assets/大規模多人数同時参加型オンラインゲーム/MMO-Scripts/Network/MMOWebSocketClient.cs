@@ -52,7 +52,7 @@ public class MMOWebSocketClient : MonoBehaviour
             !MMOSession.Instance.IsLoggedIn)
         {
             Debug.LogError(
-                "ƒƒOƒCƒ“ƒZƒbƒVƒ‡ƒ“‚ª‘¶İ‚µ‚È‚¢‚½‚ßWebSocket‚ÖÚ‘±‚Å‚«‚Ü‚¹‚ñ");
+                "ãƒ­ã‚°ã‚¤ãƒ³ã‚»ãƒƒã‚·ãƒ§ãƒ³ãŒå­˜åœ¨ã—ãªã„ãŸã‚WebSocketã¸æ¥ç¶šã§ãã¾ã›ã‚“");
 
             return;
         }
@@ -73,7 +73,7 @@ public class MMOWebSocketClient : MonoBehaviour
             !MMOSession.Instance.IsLoggedIn)
         {
             Debug.LogError(
-                "ƒƒOƒCƒ“ƒZƒbƒVƒ‡ƒ“‚ª‘¶İ‚µ‚È‚¢‚½‚ßWebSocket‚ÖÚ‘±‚Å‚«‚Ü‚¹‚ñ");
+                "ãƒ­ã‚°ã‚¤ãƒ³ã‚»ãƒƒã‚·ãƒ§ãƒ³ãŒå­˜åœ¨ã—ãªã„ãŸã‚WebSocketã¸æ¥ç¶šã§ãã¾ã›ã‚“");
 
             return;
         }
@@ -106,20 +106,18 @@ public class MMOWebSocketClient : MonoBehaviour
             {
                 reconnectScheduled = false;
 
-                Debug.Log(
-                    "WebSocketÚ‘±¬Œ÷");
             };
 
             websocket.OnError += errorMessage =>
             {
                 Debug.LogError(
-                    $"WebSocketƒGƒ‰[: {errorMessage}");
+                    $"WebSocketã‚¨ãƒ©ãƒ¼: {errorMessage}");
             };
 
             websocket.OnClose += closeCode =>
             {
                 Debug.LogWarning(
-                    $"WebSocketØ’f: {closeCode}");
+                    $"WebSocketåˆ‡æ–­: {closeCode}");
 
                 if (!isShuttingDown)
                 {
@@ -135,7 +133,7 @@ public class MMOWebSocketClient : MonoBehaviour
         catch (Exception exception)
         {
             Debug.LogError(
-                $"WebSocketÚ‘±ˆ—‚É¸”s‚µ‚Ü‚µ‚½: " +
+                $"WebSocketæ¥ç¶šå‡¦ç†ã«å¤±æ•—ã—ã¾ã—ãŸ: " +
                 $"{exception.Message}");
 
             if (!isShuttingDown)
@@ -159,8 +157,6 @@ public class MMOWebSocketClient : MonoBehaviour
 
         reconnectScheduled = true;
 
-        Debug.Log(
-            "3•bŒã‚ÉWebSocketÄÚ‘±‚ğ‚µ‚Ü‚·");
 
         await Task.Delay(
             ReconnectDelayMilliseconds);
@@ -181,8 +177,6 @@ public class MMOWebSocketClient : MonoBehaviour
         string json =
             Encoding.UTF8.GetString(messageBytes);
 
-        Debug.Log(
-            $"WebSocketóM: {json}");
 
         try
         {
@@ -195,9 +189,6 @@ public class MMOWebSocketClient : MonoBehaviour
                 return;
             }
 
-            Debug.Log(
-                $"í—Ş: {receivedMessage.type} / " +
-                $"“à—e: {receivedMessage.message}");
 
             if (receivedMessage.type == "player.join")
             {
@@ -246,7 +237,7 @@ public class MMOWebSocketClient : MonoBehaviour
         catch (Exception exception)
         {
             Debug.LogWarning(
-                $"WebSocketƒƒbƒZ[ƒW‰ğÍ¸”s: " +
+                $"WebSocketãƒ¡ãƒƒã‚»ãƒ¼ã‚¸è§£æå¤±æ•—: " +
                 $"{exception.Message}");
         }
     }
@@ -257,7 +248,7 @@ public class MMOWebSocketClient : MonoBehaviour
         if (!IsConnected)
         {
             Debug.LogWarning(
-                "WebSocket‚ÖÚ‘±‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ");
+                "WebSocketã¸æ¥ç¶šã•ã‚Œã¦ã„ã¾ã›ã‚“");
 
             return;
         }
@@ -277,13 +268,11 @@ public class MMOWebSocketClient : MonoBehaviour
         {
             await websocket.SendText(json);
 
-            Debug.Log(
-                $"WebSocket‘—M: {json}");
         }
         catch (Exception exception)
         {
             Debug.LogError(
-                $"WebSocket‘—M¸”s: " +
+                $"WebSocketé€ä¿¡å¤±æ•—: " +
                 $"{exception.Message}");
         }
     }
@@ -318,7 +307,7 @@ public class MMOWebSocketClient : MonoBehaviour
         catch (Exception exception)
         {
             Debug.LogWarning(
-                $"PlayerˆÚ“®‘—M¸”s: " +
+                $"Playerç§»å‹•é€ä¿¡å¤±æ•—: " +
                 $"{exception.Message}");
         }
     }
@@ -343,7 +332,7 @@ public class MMOWebSocketClient : MonoBehaviour
             catch (Exception exception)
             {
                 Debug.LogWarning(
-                    $"WebSocketØ’fˆ—¸”s: " +
+                    $"WebSocketåˆ‡æ–­å‡¦ç†å¤±æ•—: " +
                     $"{exception.Message}");
             }
         }

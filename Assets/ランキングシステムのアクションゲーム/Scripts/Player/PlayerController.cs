@@ -29,8 +29,6 @@ public class PlayerController : MonoBehaviour
     private Rigidbody rb;
     private bool isGrounded;
 
-    private GrappleController grappleController;
-    private WallRunController wallRunController;
 
     private float xInput;
     private float zInput;
@@ -44,8 +42,6 @@ public class PlayerController : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         rb.freezeRotation = true;
 
-        grappleController = GetComponent<GrappleController>();
-        wallRunController = GetComponent<WallRunController>();
     }
 
     private void Update()
@@ -61,13 +57,7 @@ public class PlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        bool isGrappling = grappleController != null && grappleController.IsGrappling;
-        bool isWallRunning = wallRunController != null && wallRunController.IsWallRunning;
-
-        if (!isGrappling && !isWallRunning)
-        {
-            Move();
-        }
+        Move();
 
         if (jumpRequested)
         {
@@ -75,8 +65,8 @@ public class PlayerController : MonoBehaviour
             jumpRequested = false;
         }
 
-        ApplyExtraGravity(isWallRunning);
-        ApplyAirFriction(isGrappling, isWallRunning);
+        ApplyExtraGravity();
+        ApplyAirFriction();
         LimitAbsoluteSpeed();
     }
 
@@ -110,8 +100,8 @@ public class PlayerController : MonoBehaviour
 
             float speedInInputDirection = Vector3.Dot(horizontalVelocity, inputDirection);
 
-            // ‚»‚Ì•ûŒü‚É‚Ü‚¾‰Á‘¬‚Å‚«‚é‚¾‚¯—Í‚ğ‘«‚·
-            // ‚·‚Å‚É‘¬‚¢ê‡‚Í‘¬“x‚ğÁ‚³‚¸Aã‘‚«‚à‚µ‚È‚¢
+            // ãã®æ–¹å‘ã«ã¾ã åŠ é€Ÿã§ãã‚‹æ™‚ã ã‘åŠ›ã‚’è¶³ã™
+            // ã™ã§ã«é€Ÿã„å ´åˆã¯é€Ÿåº¦ã‚’æ¶ˆã•ãšã€ä¸Šæ›¸ãã‚‚ã—ãªã„
             if (speedInInputDirection < maxControlSpeed)
             {
                 rb.AddForce(inputDirection * acceleration, ForceMode.Acceleration);
@@ -119,7 +109,7 @@ public class PlayerController : MonoBehaviour
         }
         else if (isGrounded)
         {
-            // “ü—Í‚µ‚Ä‚¢‚È‚¢‚¾‚¯’nã‚Å­‚µŒ¸‘¬
+            // å…¥åŠ›ã—ã¦ã„ãªã„æ™‚ã ã‘åœ°ä¸Šã§å°‘ã—æ¸›é€Ÿ
             rb.AddForce(-horizontalVelocity * groundFriction, ForceMode.Acceleration);
         }
     }
@@ -154,13 +144,8 @@ public class PlayerController : MonoBehaviour
 
 
 
-    private void ApplyExtraGravity(bool isWallRunning)
+    private void ApplyExtraGravity()
     {
-        if (isWallRunning)
-        {
-            return;
-        }
-
         if (rb.velocity.y < 0f)
         {
             rb.AddForce(
@@ -177,9 +162,9 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private void ApplyAirFriction(bool isGrappling, bool isWallRunning)
+    private void ApplyAirFriction()
     {
-        if (isGrounded || isGrappling || isWallRunning)
+        if (isGrounded)
         {
             return;
         }

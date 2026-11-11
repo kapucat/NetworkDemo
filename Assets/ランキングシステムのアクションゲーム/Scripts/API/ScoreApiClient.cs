@@ -65,7 +65,6 @@ public class ScoreApiClient : MonoBehaviour
 
         if (request.result == UnityWebRequest.Result.Success)
         {
-            Debug.Log("Health check success: " + request.downloadHandler.text);
         }
         else
         {
@@ -85,13 +84,11 @@ public class ScoreApiClient : MonoBehaviour
         request.downloadHandler = new DownloadHandlerBuffer();
         request.SetRequestHeader("Content-Type", "application/json");
 
-        Debug.Log("Send score JSON: " + json);
 
         yield return request.SendWebRequest();
 
         if (request.result == UnityWebRequest.Result.Success)
         {
-            Debug.Log("Score send success: " + request.downloadHandler.text);
 
             StartCoroutine(GetBestScore(score.player_name, score.stage_id));
         }
@@ -116,7 +113,6 @@ public class ScoreApiClient : MonoBehaviour
 
         if (request.result == UnityWebRequest.Result.Success)
         {
-            Debug.Log("Best score get success: " + request.downloadHandler.text);
 
             BestResponse best = JsonUtility.FromJson<BestResponse>(request.downloadHandler.text);
 

@@ -11,46 +11,50 @@ public class MMOMoveClickMarker : MonoBehaviour
     [SerializeField]
     private float endScale = 1.0f;
 
+    private static readonly int ColorProperty = Shader.PropertyToID("_Color");
+
     private float elapsed;
-
-    private Vector3 initialScale;
-
     private Renderer cachedRenderer;
-    private Material runtimeMaterial;
+    private MaterialPropertyBlock properties;
     private Color baseColor;
 
     private void Awake()
     {
-        initialScale = Vector3.one * startScale;
-
-        transform.localScale = initialScale;
-
+        transform.localScale = Vector3.one * startScale;
         cachedRenderer = GetComponent<Renderer>();
 
-        if (cachedRenderer != null)
+        if (cachedRenderer == null)
         {
-            runtimeMaterial = cachedRenderer.material;
-            baseColor = runtimeMaterial.color;
+            return;
         }
+
+        Material material = cachedRenderer.sharedMaterial;
+        if (material == null || !material.HasProperty(ColorProperty))
+        {
+            return;
+        }
+
+        baseColor = material.GetColor(ColorProperty);
+        properties = new MaterialPropertyBlock();
+        cachedRenderer.GetPropertyBlock(properties);
     }
 
     private void Update()
     {
         elapsed += Time.deltaTime;
+        float t = lifeTime > 0f ? Mathf.Clamp01(elapsed / lifeTime) : 1f;
 
-        float t = Mathf.Clamp01(elapsed / lifeTime);
+        transform.localScale = Vector3.one * Mathf.Lerp(startScale, endScale, t);
 
-        float scale = Mathf.Lerp(startScale, endScale, t);
-        transform.localScale = Vector3.one * scale;
-
-        if (runtimeMaterial != null)
+        if (cachedRenderer != null && properties != null)
         {
             Color color = baseColor;
             color.a = Mathf.Lerp(baseColor.a, 0f, t);
-            runtimeMaterial.color = color;
+            properties.SetColor(ColorProperty, color);
+            cachedRenderer.SetPropertyBlock(properties);
         }
 
-        if (elapsed >= lifeTime)
+        if (t >= 1f)
         {
             Destroy(gameObject);
         }

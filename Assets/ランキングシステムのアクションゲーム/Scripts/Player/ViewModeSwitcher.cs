@@ -1,86 +1,23 @@
 using UnityEngine;
 
+// Initialize the fixed third-person camera. Keep the prefab script GUID.
 public class ViewModeSwitcher : MonoBehaviour
 {
-    [Header("Cameras")]
-    [SerializeField] private Camera firstPersonCamera;
     [SerializeField] private Camera thirdPersonCamera;
-
-    [Header("Camera Controls")]
-    [SerializeField] private FirstPersonLook firstPersonLook;
     [SerializeField] private ThirdPersonCameraController thirdPersonCameraController;
-
-    [Header("Player Controllers")]
     [SerializeField] private PlayerController playerController;
-    [SerializeField] private GrappleController grappleController;
-    [SerializeField] private WallRunController wallRunController;
-
-    [Header("Settings")]
-    [SerializeField] private bool startThirdPerson = false;
-    [SerializeField] private KeyCode switchKey = KeyCode.V;
-
-    private bool isThirdPerson;
 
     private void Start()
     {
-        SetViewMode(startThirdPerson);
-    }
-
-    private void Update()
-    {
-        if (Input.GetKeyDown(switchKey))
+        if (thirdPersonCamera == null)
         {
-            SetViewMode(!isThirdPerson);
+            Debug.LogError("Third-person camera is not assigned.", this);
+            return;
         }
-    }
-
-    public void SetViewMode(bool useThirdPerson)
-    {
-        isThirdPerson = useThirdPerson;
-
-        if (firstPersonCamera != null)
-        {
-            firstPersonCamera.enabled = !isThirdPerson;
-        }
-
-        if (thirdPersonCamera != null)
-        {
-            thirdPersonCamera.enabled = isThirdPerson;
-        }
-
-        if (firstPersonLook != null)
-        {
-            firstPersonLook.enabled = !isThirdPerson;
-        }
-
+        thirdPersonCamera.enabled = true;
         if (thirdPersonCameraController != null)
-        {
-            thirdPersonCameraController.enabled = isThirdPerson;
-        }
-
-        Transform activeCameraTransform = isThirdPerson
-            ? thirdPersonCamera.transform
-            : firstPersonCamera.transform;
-
+            thirdPersonCameraController.enabled = true;
         if (playerController != null)
-        {
-            playerController.SetCameraTransform(activeCameraTransform);
-        }
-
-        if (grappleController != null)
-        {
-            grappleController.SetCameraTransform(activeCameraTransform);
-
-            // First person: grapple ON, Third person: grapple OFF
-            grappleController.SetGrappleEnabled(!isThirdPerson);
-        }
-
-        if (wallRunController != null)
-        {
-            wallRunController.SetCameraTransform(activeCameraTransform);
-
-            // 1êlèÃÇÕï«ëñÇËONÅA3êlèÃÇÕï«ëñÇËOFF
-            wallRunController.SetWallRunEnabled(!isThirdPerson);
-        }
+            playerController.SetCameraTransform(thirdPersonCamera.transform);
     }
 }

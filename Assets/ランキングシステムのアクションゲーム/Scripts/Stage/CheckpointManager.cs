@@ -33,7 +33,7 @@ public class CheckpointManager : MonoBehaviour
             return;
         }
 
-        // ŒÃ‚¢ƒ`ƒFƒbƒNƒ|ƒCƒ“ƒg‚É–ß‚ç‚È‚¢‚æ‚¤‚É‚·‚é
+        // å¤ã„ãƒã‚§ãƒƒã‚¯ãƒã‚¤ãƒ³ãƒˆã«æˆ»ã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹
         if (checkpointOrder < currentCheckpointOrder)
         {
             return;
@@ -55,7 +55,7 @@ public class CheckpointManager : MonoBehaviour
 
         Vector3 respawnPosition = currentCheckpoint.position + Vector3.up * respawnYOffset;
 
-        // ƒŠƒXƒ|[ƒ“Žž‚Í•K‚¸ƒ[ƒ‹ƒh‚ÌZ-•ûŒü‚ðŒü‚­
+        // ãƒªã‚¹ãƒãƒ¼ãƒ³æ™‚ã¯å¿…ãšãƒ¯ãƒ¼ãƒ«ãƒ‰ã®Z-æ–¹å‘ã‚’å‘ã
         Quaternion respawnRotation = Quaternion.Euler(0f, 180f, 0f);
 
         if (rb != null)
@@ -69,12 +69,6 @@ public class CheckpointManager : MonoBehaviour
         }
 
         transform.SetPositionAndRotation(respawnPosition, respawnRotation);
-
-        FirstPersonLook firstPersonLook = GetComponentInChildren<FirstPersonLook>(true);
-        if (firstPersonLook != null)
-        {
-            firstPersonLook.ResetLook(respawnRotation);
-        }
 
         ThirdPersonCameraController thirdPersonCameraController = GetComponentInChildren<ThirdPersonCameraController>(true);
         if (thirdPersonCameraController != null)

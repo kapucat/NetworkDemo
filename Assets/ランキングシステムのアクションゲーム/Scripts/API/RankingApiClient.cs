@@ -42,11 +42,10 @@ public class RankingApiClient : MonoBehaviour
 
         if (request.result == UnityWebRequest.Result.Success)
         {
-            Debug.Log("Ranking get success: " + request.downloadHandler.text);
 
             string json = request.downloadHandler.text;
 
-            // Unity��JsonUtility�͔z�񂾂���JSON�𒼐ړǂ߂Ȃ��̂ŁAitems�ŕ��
+            // UnityのJsonUtilityは配列だけのJSONを直接読めないので、itemsで包む
             string wrappedJson = "{\"items\":" + json + "}";
 
             RankingList rankingList = JsonUtility.FromJson<RankingList>(wrappedJson);
