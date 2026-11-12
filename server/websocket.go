@@ -326,7 +326,6 @@ var websocketUpgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 
 	// Unity Editor・Windowsアプリからの接続確認用。
-	// 公開時は接続元を制限する。
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
