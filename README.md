@@ -29,4 +29,3 @@ UnityとGoで制作した、オンライン通信の技術デモです。
 
 サーバーのコードは `server/main.go`、`server/accounts.go`、`server/websocket.go` にあります。
 負荷試験の条件と結果は [負荷試験の説明](server/loadtest/README.md) を参照してください。
-Compose内の開発用設定値を、そのまま公開サーバーの認証情報として使用しないでください。
