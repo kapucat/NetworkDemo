@@ -1,27 +1,25 @@
-# k6 Load Tests
+# ランキングAPIの負荷試験と性能改善
 
-HOOK RUNNER SERVERのGo APIについて、負荷試験、ボトルネック調査、性能改善、再測定を行うための資料です。
+ネットワークDemoのGo製ランキング取得APIを対象に、k6による負荷試験、ボトルネック調査、性能改善を実施しました。
+本資料は、その試験構成と測定結果をまとめたものです。
 
-## 現在の完了状態
+## 試験の概要
 
-ランキング取得APIについて、以下まで完了しています。
+10,000件のテストデータを使用した300 VUの試験で、DB接続エラーと応答時間の増大を再現しました。
+実行計画の分析に基づく複合インデックスの追加と、DB接続プールの設定後、同じ300 VU条件で再測定しています。
+ここで示すVUは、ランキング取得リクエストを実行する仮想利用者数です。
 
-- 本番環境とは分離した負荷試験専用Docker環境
-- 10,000件のテストデータ生成
-- k6による読み取り負荷試験
-- 300 VUでの障害再現
-- APIログと`EXPLAIN (ANALYZE, BUFFERS)`による原因調査
-- ランキング用複合インデックス追加
-- GoのDB接続プール設定
-- 同じ300 VU条件での再測定
-- VPS通常環境への反映
-- UnityからVPSへのスコア送信とランキング表示確認
+| 項目 | 改善前 | 改善後 |
+|---|---:|---:|
+| 成功率 | 95.24% | 100.00% |
+| 平均応答時間 | 201.35ms | 7.62ms |
+| p95応答時間 | 741.83ms | 25.20ms |
 
-## 負荷試験専用環境
+## 試験環境
 
-通常ランキングを汚さないように、通常用Composeとは別の環境を使用します。
+負荷試験には、通常のランキングとは独立したDocker Compose構成と専用DBを使用しています。
 
-```txt
+```text
 k6
 ↓ HTTP localhost:8081
 hook_runner_api_loadtest
@@ -31,81 +29,70 @@ hook_runner_postgres_loadtest
 hook_runner_loadtest_db
 ```
 
-構成ファイル：
+| 項目 | 設定 |
+|---|---|
+| API | http://localhost:8081 |
+| DB | hook_runner_loadtest_db |
+| テストデータ | 10,000件 |
+| テスト用プレイヤー | 1,000人 |
+| 1プレイヤー当たりの記録 | 10件 |
+| stage_id | 1 |
+| PostgreSQLのホスト側ポート | 非公開 |
 
-```txt
-server/docker-compose.loadtest.yml
-server/loadtest/seed.sql
-server/loadtest/smoke-readonly.js
-server/loadtest/rankings-read.js
-```
+### 関連ファイル
 
-設定：
+| ファイル | 内容 |
+|---|---|
+| `server/docker-compose.loadtest.yml` | 負荷試験専用のAPI・DB構成 |
+| `server/loadtest/seed.sql` | テストデータの生成 |
+| `server/loadtest/smoke-readonly.js` | ヘルスチェック・ランキング・統計APIの疎通試験 |
+| `server/loadtest/rankings-read.js` | ランキング取得APIの負荷試験 |
 
-```txt
-API：http://localhost:8081
-DB：hook_runner_loadtest_db
-テストデータ：10,000件
-プレイヤー数：1,000人
-1プレイヤー当たり：10件
-stage_id：1
-PostgreSQLのホスト側ポート公開：なし
-```
+### 評価指標
 
-## k6のインストール
+- リクエスト失敗率：1%未満
+- p95応答時間：500ms未満
+- checks成功率：99%超
+- APIコンテナの稼働継続
+- PostgreSQL接続エラーの有無
+- API・DBコンテナのCPU使用率とメモリ使用量
 
-Windows PowerShellで実行します。
+### 測定値の読み方
+
+`rankings-read.js`は、各反復の最後に`sleep(1)`を実行します。
+測定されたRPSは、この待機時間を含む試験条件での処理件数です。
+
+## 試験の実行例
+
+実行環境はDocker Compose、k6、Windows PowerShellです。
+以下のパスはリポジトリのルートを基準にしています。
+
+### 専用環境の起動
 
 ```powershell
-winget install k6 --source winget
-k6 version
-```
-
-## 専用環境の起動
-
-```powershell
-cd "C:\Users\2240037\Desktop\3年\卒業制作\HookRunnerServer\server"
+cd server
 docker compose -f docker-compose.loadtest.yml up -d --build
-docker ps
-```
-
-ヘルスチェック：
-
-```powershell
 Invoke-RestMethod "http://localhost:8081/health"
 ```
 
-停止：
+### 疎通試験
+
+`smoke-readonly.js`は、1 VU・15秒で3つの読み取りAPIを確認します。
 
 ```powershell
-docker compose -f docker-compose.loadtest.yml down
-```
-
-テストDBを初期化し直す場合のみ、ボリュームを削除します。
-
-```powershell
-docker compose -f docker-compose.loadtest.yml down -v
-docker compose -f docker-compose.loadtest.yml up -d --build
-```
-
-> 通常用の`docker compose`に対して、誤って`down -v`を実行しないこと。
-
-## スモークテスト
-
-`/health`、`/api/rankings`、`/api/stats`が正常応答するかを、1 VU・15秒で確認します。
-
-```powershell
-cd "C:\Users\2240037\Desktop\3年\卒業制作\HookRunnerServer\server\loadtest"
+cd loadtest
 k6 run -e BASE_URL=http://localhost:8081 smoke-readonly.js
 ```
 
-## ランキング読み取り試験
+### ランキング取得試験
+
+`rankings-read.js`の標準設定は最大10 VUです。下記の実行例と、本文の300 VU比較結果は負荷条件が異なります。
 
 ```powershell
 k6 run -e BASE_URL=http://localhost:8081 rankings-read.js
 ```
 
-VUをコマンドから変更する例：
+実行時に負荷条件を指定する例：
 
 ```powershell
 k6 run -e BASE_URL=http://localhost:8081 `
@@ -115,26 +102,9 @@ k6 run -e BASE_URL=http://localhost:8081 `
   rankings-read.js
 ```
 
-300 VUで実行する場合は、まず10 VU、50 VU、100 VUなどで段階的に確認してから増やします。
+## 性能改善結果
 
-### RPSについての注意
-
-`rankings-read.js`には各反復の最後に`sleep(1)`があります。
-そのため、測定されたRPSは一定間隔でアクセスする利用者を想定した値であり、サーバーの理論上の最大RPSではありません。
-
-## 合格基準
-
-```txt
-http_req_failed：1%未満
-http_req_duration p95：500ms未満
-checks成功率：99%超
-APIコンテナが停止しない
-PostgreSQL接続エラーが発生しない
-```
-
-# 性能改善結果
-
-## 改善前に発生した問題
+### 改善前に発生した問題
 
 10,000件のデータを使用して300 VUのランキング取得試験を行ったところ、エラーと大きなDB負荷が発生しました。
 
@@ -161,7 +131,7 @@ ranking query failed: pq: sorry, too many clients already (53300)
 DockerのCPU使用率は、複数のCPUコアを使用すると100%を超えます。
 `1586.97%`は、およそ15.9論理コア分のCPU時間を使用した表示です。
 
-## 実行計画による原因調査
+### 実行計画による原因調査
 
 改善前：
 
@@ -174,7 +144,7 @@ Execution Time：19.916ms
 
 ランキング取得のたびに10,000件を全件走査し、プレイヤー名、クリアタイム、作成日時で並べ替えていました。
 
-## ランキング用複合インデックス
+### ランキング用複合インデックス
 
 ランキングSQLの検索条件と並び順に合わせて、以下を追加しました。
 
@@ -206,7 +176,7 @@ Execution Time：1.925ms
 
 SQL単体では、19.916msから1.925msへ約90.3%短縮し、約10.3倍高速化しました。
 
-## DB接続プール
+### DB接続プール
 
 Goの`database/sql`に以下を設定しました。
 
@@ -224,7 +194,7 @@ db.SetConnMaxIdleTime(5 * time.Minute)
 - 古い接続や長時間未使用の接続を更新する
 - アクセス増加時の接続数を制御する
 
-## 改善段階ごとの300 VU結果
+### 改善段階ごとの300 VU結果
 
 | 項目 | 改善前 | インデックス追加後 | 接続プール追加後 |
 |---|---:|---:|---:|
@@ -240,7 +210,7 @@ db.SetConnMaxIdleTime(5 * time.Minute)
 | API最大メモリ | 24.35MiB | 21.10MiB | 19.88MiB |
 | PostgreSQL最大メモリ | 319.30MiB | 47.18MiB | 52.06MiB |
 
-### 結果の解釈
+#### 結果の解釈
 
 最も大きな性能改善は、ランキングSQLに合わせた複合インデックスによるものです。
 インデックス追加後の時点でエラー率は0%になり、平均応答時間も約7.6msまで短縮しました。
@@ -248,7 +218,7 @@ db.SetConnMaxIdleTime(5 * time.Minute)
 DB接続プールは、改善全体を単独で発生させたものではありません。
 接続数の上限を明示し、高負荷時にPostgreSQLへ接続が無制限に増えないようにする安全性と安定性の改善です。
 
-## 改善前後の最終比較
+### 改善前後の最終比較
 
 | 項目 | 改善前 | 最終 | 変化 |
 |---|---:|---:|---:|
@@ -259,10 +229,10 @@ DB接続プールは、改善全体を単独で発生させたものではあり
 | PostgreSQL最大CPU | 1586.97% | 169.38% | 約89.3%減少 |
 | PostgreSQL最大メモリ | 319.30MiB | 52.06MiB | 約83.7%減少 |
 
-## VPSで行った読み取り試験の記録
+### VPSで行った読み取り試験の記録
 
-以下は、負荷試験専用ローカル環境を作る前にVPS通常環境で行った読み取り専用テストの記録です。
-専用環境での改善比較とは測定環境が異なるため、同じ表の数値を直接比較しません。
+負荷試験専用のローカル環境を構築する前に、VPSで実施した読み取り試験の記録です。
+ローカル環境の改善前後比較とは測定環境が異なります。
 
 | VU | 平均応答時間 | p95 | 最大 | RPS | エラー率 | API CPU | PostgreSQL CPU |
 |---:|---:|---:|---:|---:|---:|---:|---:|
@@ -271,60 +241,22 @@ DB接続プールは、改善全体を単独で発生させたものではあり
 | 300 | 33.85ms | 94.17ms | 567.65ms | 185.28 | 0% | 59.82% | 123.04% |
 | 500 | 66.00ms | 209.24ms | 6.99秒 | 274.02 | 0% | 124.75% | 269.03% |
 
-# 結果の保存
+## 結果の記録
 
-結果フォルダ：
+JSON形式のサマリー出力例：
 
 ```powershell
 New-Item -ItemType Directory -Force results
-```
-
-JSONサマリー保存例：
-
-```powershell
 k6 run -e BASE_URL=http://localhost:8081 `
   --summary-export results\rankings-local.json `
   rankings-read.js
 ```
 
-`server/loadtest/results/`はGit管理対象外です。
-
-負荷試験中のリソース確認：
+コンテナのCPU・メモリ使用量は、以下のコマンドで取得します。
 
 ```powershell
 docker stats hook_runner_api_loadtest hook_runner_postgres_loadtest
 ```
 
-記録する値：
-
-- VU数
-- リクエスト数
-- RPS
-- 平均応答時間
-- p95応答時間
-- 最大応答時間
-- エラー率
-- APIコンテナのCPU・メモリ
-- PostgreSQLコンテナのCPU・メモリ
-
-# 安全上の注意
-
-- 最初にスモークテストを実行する
-- 10 VU、50 VU、100 VUのように段階的に増やす
-- 本番ランキングへPOSTを含む負荷試験を行わない
-- 自分が管理する環境以外へ負荷試験を行わない
-- 高負荷を長時間継続しない
-- CPUとメモリを`docker stats`で監視する
-- 通常用Composeで`down -v`を実行しない
-
-# 今後の追加検証候補
-
-必要性と制作時間を確認して、次の項目を追加します。
-
-- 10万件以上のテストデータ
-- ランキング取得とスコア送信を混ぜた負荷試験
-- HTTPサーバーの`ReadTimeout`、`WriteTimeout`、`IdleTimeout`
-- リクエスト処理時間の計測Middleware
-- 異常な連続投稿への簡易制限
-
-Redis、Kubernetes、gRPCなどの大規模な構成は、必要性が確認できない限り追加しません。
+生成される測定結果の保存先は`server/loadtest/results/`です。
+リポジトリには試験スクリプトと本文の測定記録を公開しています。
