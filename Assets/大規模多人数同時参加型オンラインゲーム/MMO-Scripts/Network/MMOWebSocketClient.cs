@@ -1,8 +1,10 @@
 using System;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using NativeWebSocket;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class MMOWebSocketClient : MonoBehaviour
 {
@@ -10,7 +12,9 @@ public class MMOWebSocketClient : MonoBehaviour
 
     private bool isConnecting;
     private bool reconnectScheduled;
-    private bool isShuttingDown;
+    private volatile bool isShuttingDown;
+    private volatile bool isAdminDisconnected;
+    private int returnToLoginPending;
 
     private const int ReconnectDelayMilliseconds = 3000;
 
@@ -27,6 +31,8 @@ public class MMOWebSocketClient : MonoBehaviour
         OnPlayerMoved;
 
     public bool IsConnected =>
+        !isShuttingDown &&
+        !isAdminDisconnected &&
         websocket != null &&
         websocket.State == WebSocketState.Open;
 
@@ -63,6 +69,7 @@ public class MMOWebSocketClient : MonoBehaviour
     private async Task ConnectWebSocket()
     {
         if (isShuttingDown ||
+            isAdminDisconnected ||
             isConnecting ||
             IsConnected)
         {
@@ -99,23 +106,42 @@ public class MMOWebSocketClient : MonoBehaviour
                 "token=" +
                 Uri.EscapeDataString(sessionToken);
 
-            websocket =
+            WebSocket activeSocket =
                 new WebSocket(authenticatedUrl);
+            websocket = activeSocket;
 
-            websocket.OnOpen += () =>
+            activeSocket.OnOpen += () =>
             {
+                if (!ReferenceEquals(websocket, activeSocket) || isShuttingDown || isAdminDisconnected)
+                {
+                    _ = activeSocket.Close();
+                    return;
+                }
                 reconnectScheduled = false;
 
             };
 
-            websocket.OnError += errorMessage =>
+            activeSocket.OnError += errorMessage =>
             {
+                if (!ReferenceEquals(websocket, activeSocket) || isShuttingDown) return;
                 Debug.LogError(
                     $"WebSocketエラー: {errorMessage}");
             };
 
-            websocket.OnClose += closeCode =>
+            activeSocket.OnClose += closeCode =>
             {
+                if (!ReferenceEquals(websocket, activeSocket) || isShuttingDown) return;
+
+                // 1008は管理サーバーからの接続終了。通常の通信断と分ける。
+                if (closeCode == WebSocketCloseCode.PolicyViolation)
+                {
+                    isAdminDisconnected = true;
+                    isShuttingDown = true;
+                    reconnectScheduled = false;
+                    Interlocked.Exchange(ref returnToLoginPending, 1);
+                    return;
+                }
+
                 Debug.LogWarning(
                     $"WebSocket切断: {closeCode}");
 
@@ -125,10 +151,13 @@ public class MMOWebSocketClient : MonoBehaviour
                 }
             };
 
-            websocket.OnMessage +=
-                HandleWebSocketMessage;
+            activeSocket.OnMessage += message =>
+            {
+                if (ReferenceEquals(websocket, activeSocket) && !isShuttingDown)
+                    HandleWebSocketMessage(message);
+            };
 
-            await websocket.Connect();
+            await activeSocket.Connect();
         }
         catch (Exception exception)
         {
@@ -150,6 +179,7 @@ public class MMOWebSocketClient : MonoBehaviour
     private async Task ScheduleReconnect()
     {
         if (isShuttingDown ||
+            isAdminDisconnected ||
             reconnectScheduled)
         {
             return;
@@ -163,12 +193,24 @@ public class MMOWebSocketClient : MonoBehaviour
 
         reconnectScheduled = false;
 
-        if (isShuttingDown)
+        if (isShuttingDown || isAdminDisconnected)
         {
             return;
         }
 
         await ConnectWebSocket();
+    }
+
+    // シーン切替とUnityオブジェクトの操作は必ずメインスレッドで行う。
+    private void Update()
+    {
+        if (Interlocked.Exchange(ref returnToLoginPending, 0) == 0) return;
+
+        if (MMOSession.Instance != null)
+            MMOSession.Instance.Clear();
+
+        Debug.LogWarning("サーバーから接続を終了されました。再ログインしてください。");
+        SceneManager.LoadScene("LoginScene");
     }
 
     private void HandleWebSocketMessage(
