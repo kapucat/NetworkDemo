@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 [RequireComponent(typeof(NavMeshAgent))]
 public class MMOClickMove : MonoBehaviour
@@ -23,6 +25,10 @@ public class MMOClickMove : MonoBehaviour
 
     private GameObject currentMarkerInstance;
 
+    private readonly List<RaycastResult> uiRaycastResults = new();
+    private EventSystem pointerEventSystem;
+    private PointerEventData pointerEventData;
+
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
@@ -40,7 +46,7 @@ public class MMOClickMove : MonoBehaviour
             return;
         }
 
-        // ƒ`ƒƒƒbƒg“ü—Í’†‚ÍˆÚ“®‚³‚¹‚È‚¢
+        // ãƒãƒ£ãƒƒãƒˆå…¥åŠ›ä¸­ã¯ç§»å‹•ã•ã›ãªã„
         if (chatUI != null &&
             chatUI.IsInputActive)
         {
@@ -52,10 +58,10 @@ public class MMOClickMove : MonoBehaviour
             return;
         }
 
-        // ƒ{ƒ^ƒ“‚â“ü—Í—“‚È‚ÇA
-        // ÀÛ‚É‘€ì‚·‚éUI‚Ìã‚Å‚ÍˆÚ“®‚³‚¹‚È‚¢
-        if (EventSystem.current != null &&
-            EventSystem.current.IsPointerOverGameObject())
+        Vector2 mousePosition =
+            Mouse.current.position.ReadValue();
+
+        if (IsPointerOverInteractiveUI(mousePosition))
         {
             return;
         }
@@ -63,12 +69,9 @@ public class MMOClickMove : MonoBehaviour
         if (!agent.isOnNavMesh)
         {
             Debug.LogWarning(
-                "Player‚ªNavMeshã‚É‚¢‚Ü‚¹‚ñ");
+                "PlayerãŒNavMeshä¸Šã«ã„ã¾ã›ã‚“");
             return;
         }
-
-        Vector2 mousePosition =
-            Mouse.current.position.ReadValue();
 
         Ray ray =
             mainCamera.ScreenPointToRay(
@@ -97,6 +100,38 @@ public class MMOClickMove : MonoBehaviour
 
         ShowMoveMarker(
             navMeshHit.position);
+    }
+
+    private bool IsPointerOverInteractiveUI(Vector2 mousePosition)
+    {
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null)
+        {
+            return false;
+        }
+
+        if (pointerEventData == null || pointerEventSystem != eventSystem)
+        {
+            pointerEventSystem = eventSystem;
+            pointerEventData = new PointerEventData(eventSystem);
+        }
+
+        pointerEventData.Reset();
+        pointerEventData.position = mousePosition;
+        uiRaycastResults.Clear();
+        eventSystem.RaycastAll(pointerEventData, uiRaycastResults);
+
+        // å±¥æ­´ã‚„èƒŒæ™¯ã®ä¸Šã¯åœ°é¢ã¸é€šã—ã€æ“ä½œã™ã‚‹UIã ã‘ç§»å‹•ã‚’æ­¢ã‚ã‚‹ã€‚
+        foreach (RaycastResult result in uiRaycastResults)
+        {
+            Selectable control = result.gameObject.GetComponentInParent<Selectable>();
+            if (control != null && control.IsActive())
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ShowMoveMarker(Vector3 position)
