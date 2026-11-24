@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -32,7 +31,8 @@ public class MMOChatUI : MonoBehaviour
     [SerializeField]
     private float sendInterval = 0.15f;
 
-    private readonly List<string> messages = new();
+    private readonly MMOChatHistory history = new();
+    private static readonly Color32 ExitNoticeColor = new Color32(255, 165, 0, 255);
 
     private Coroutine scrollCoroutine;
     private float nextSendTime;
@@ -40,7 +40,7 @@ public class MMOChatUI : MonoBehaviour
     public bool IsInputActive { get; private set; }
 
     public void ClearHistory() {
-        messages.Clear();
+        history.Clear();
         if (chatLogText != null) chatLogText.text = "";
         CloseChatInput();
     }
@@ -57,10 +57,16 @@ public class MMOChatUI : MonoBehaviour
 
     private void OnEnable()
     {
+        if (chatLogText != null)
+        {
+            chatLogText.OnPreRenderText += ColorExitNotices;
+            chatLogText.SetVerticesDirty();
+        }
         if (webSocketClient != null)
         {
             webSocketClient.OnChatMessageReceived +=
                 HandleChatMessageReceived;
+            webSocketClient.OnPlayerLeft += HandlePlayerLeft;
         }
 
         if (chatInputField != null)
@@ -72,10 +78,13 @@ public class MMOChatUI : MonoBehaviour
 
     private void OnDisable()
     {
+        if (chatLogText != null)
+            chatLogText.OnPreRenderText -= ColorExitNotices;
         if (webSocketClient != null)
         {
             webSocketClient.OnChatMessageReceived -=
                 HandleChatMessageReceived;
+            webSocketClient.OnPlayerLeft -= HandlePlayerLeft;
         }
 
         if (chatInputField != null)
@@ -216,21 +225,42 @@ public class MMOChatUI : MonoBehaviour
             $"[SYSTEM] {message}");
     }
 
-    private void AppendMessage(string message)
+    private void HandlePlayerLeft(long accountId, string loginName)
+    {
+        // Room roster differences emit this event once; local resets do not.
+        string name = string.IsNullOrWhiteSpace(loginName) ? "Unknown" : loginName;
+        AppendMessage($"Åy{name}ÅzÇ™ëﬁèoÇµÇ‹ÇµÇΩ", true);
+    }
+
+    private void ColorExitNotices(TMP_TextInfo textInfo)
+    {
+        var ranges = history.NoticeRanges;
+        int rangeIndex = 0;
+        for (int i = 0; i < textInfo.characterCount && rangeIndex < ranges.Count; i++)
+        {
+            var character = textInfo.characterInfo[i];
+            while (rangeIndex < ranges.Count && character.index >= ranges[rangeIndex].End)
+                rangeIndex++;
+            if (rangeIndex >= ranges.Count) break;
+            if (!character.isVisible || character.index < ranges[rangeIndex].Start) continue;
+
+            var colors = textInfo.meshInfo[character.materialReferenceIndex].colors32;
+            int vertex = character.vertexIndex;
+            for (int corner = 0; corner < 4; corner++)
+                colors[vertex + corner] = ExitNoticeColor;
+        }
+    }
+
+    private void AppendMessage(string message, bool isExitNotice = false)
     {
         bool shouldAutoScroll = IsNearBottom();
 
-        messages.Add(message);
-
-        while (messages.Count > maxMessageCount)
-        {
-            messages.RemoveAt(0);
-        }
+        history.Add(message, isExitNotice, maxMessageCount);
 
         if (chatLogText != null)
         {
             chatLogText.text =
-                string.Join("\n", messages);
+                history.Text;
         }
 
         if (shouldAutoScroll &&
