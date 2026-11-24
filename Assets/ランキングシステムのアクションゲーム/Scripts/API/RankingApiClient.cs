@@ -7,7 +7,7 @@ using UnityEngine.Networking;
 
 public class RankingApiClient : MonoBehaviour
 {
-    [SerializeField] private string baseUrl = "http://localhost:8080";
+    [SerializeField] private string baseUrl = "https://49.212.160.97/ranking";
     [SerializeField] private TextMeshProUGUI rankingListText;
     [SerializeField] private int stageId = 1;
     [SerializeField] private int maxDisplayCount = 5;

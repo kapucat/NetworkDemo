@@ -1,0 +1,10 @@
+services:
+  gateway:
+    networks:
+      default: {}
+      ranking_gateway: {}
+
+networks:
+  ranking_gateway:
+    external: true
+    name: networkdemo_ranking_gateway

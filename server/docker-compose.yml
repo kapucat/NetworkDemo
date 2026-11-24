@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:16
     container_name: hook_runner_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: hook_user
       POSTGRES_PASSWORD: hook_password
@@ -11,6 +12,11 @@ services:
   api:
     build: .
     container_name: hook_runner_api
+    restart: unless-stopped
+    networks:
+      default: {}
+      ranking_gateway:
+        aliases: [ranking-api]
     depends_on:
       - postgres
     environment:
@@ -24,3 +30,6 @@ services:
 
 volumes:
   postgres_data:
+networks:
+  ranking_gateway:
+    name: networkdemo_ranking_gateway

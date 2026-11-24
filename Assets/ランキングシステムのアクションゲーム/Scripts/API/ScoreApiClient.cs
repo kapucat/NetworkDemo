@@ -6,7 +6,7 @@ using UnityEngine.Networking;
 
 public class ScoreApiClient : MonoBehaviour
 {
-    [SerializeField] private string baseUrl = "http://localhost:8080";
+    [SerializeField] private string baseUrl = "https://49.212.160.97/ranking";
     [SerializeField] private bool checkHealthOnStart = false;
     [SerializeField] private bool sendScoreOnStart = false;
     [SerializeField] private TextMeshProUGUI bestTimeText;
