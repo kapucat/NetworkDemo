@@ -41,6 +41,7 @@ public class MMOClickMove : MonoBehaviour
 
     private void Update()
     {
+        if (!MMORoomLobby.MovementAllowed) return;
         if (Mouse.current == null)
         {
             return;

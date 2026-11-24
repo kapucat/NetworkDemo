@@ -27,6 +27,7 @@ public class MMOPlayerWorld : MonoBehaviour
             return;
         }
 
+        webSocketClient.OnWorldReset += ClearWorld;
         webSocketClient.OnPlayerJoined +=
             HandlePlayerJoined;
 
@@ -44,6 +45,7 @@ public class MMOPlayerWorld : MonoBehaviour
             return;
         }
 
+        webSocketClient.OnWorldReset -= ClearWorld;
         webSocketClient.OnPlayerJoined -=
             HandlePlayerJoined;
 
@@ -54,6 +56,10 @@ public class MMOPlayerWorld : MonoBehaviour
             HandlePlayerMoved;  
     }
 
+    private void ClearWorld() {
+        foreach (var player in remotePlayers.Values) if (player != null) Destroy(player);
+        remotePlayers.Clear();
+    }
     private void HandlePlayerJoined(
         long accountId,
         string loginName)

@@ -1,0 +1,721 @@
+package main
+
+import (
+	"container/list"
+	"encoding/json" // JSONエンコード・デコード用
+	"log"           // ログ出力用
+	"math"          // 数学関数用
+	"net/http"      // HTTPサーバー用
+	"strings"       // 文字列操作用
+	"sync"          // 同期用
+	"sync/atomic"
+	"time" // 時間操作用
+
+	"github.com/gorilla/websocket" // WebSocket用
+)
+
+// WebSocket通信を扱うためのGo言語のコードです。WebSocketは、クライアントとサーバー間で双方向通信を可能にするプロトコル。
+// このコードでは、WebSocket接続の管理、メッセージの送受信、クライアントの登録・解除などの機能が実装されている。
+type WebSocketMessage struct {
+	Rooms         []roomSummary `json:"rooms,omitempty"`
+	Room          *roomState    `json:"room,omitempty"`
+	RoomID        string        `json:"room_id,omitempty"`
+	Ready         bool          `json:"ready"`
+	ServerUnixMS  int64         `json:"server_unix_ms,omitempty"`
+	ClientUnixMS  int64         `json:"client_unix_ms,omitempty"`
+	DiagHubUnixMS int64         `json:"diag_hub_unix_ms,omitempty"`
+	Type          string        `json:"type"`
+	AccountID     int64         `json:"account_id,omitempty"`
+	LoginName     string        `json:"login_name,omitempty"`
+	Message       string        `json:"message,omitempty"`
+	X             float64       `json:"x,omitempty"`
+	Y             float64       `json:"y,omitempty"`
+	Z             float64       `json:"z,omitempty"`
+	RotationY     float64       `json:"rotation_y,omitempty"`
+	SentAt        string        `json:"sent_at,omitempty"`
+	encoded       []byte        // ブロードキャスト用のJSONデータ
+	diagQueuedAt  time.Time     // Diagnostic-copy only; not serialized.
+}
+
+// Clientは、WebSocket接続を表す構造体です。各クライアントは、Hubに登録され、メッセージの送受信を行います。
+type Client struct {
+	roomsMode          bool   // Immutable after handshake; legacy clients keep the original world.
+	roomID             string // Hub-owned.
+	roomCommandAt      time.Time
+	roomCommandTokens  float64
+	roomChatAt         time.Time
+	moveSlots          int // Writer-owned; six movement messages per 10ms refill.
+	moveMu             sync.Mutex
+	moves              map[int64]*list.Element
+	moveOrder          list.List
+	moveWake           chan struct{}
+	movesClosed        bool
+	movesReplaced      atomic.Uint64
+	movesEvicted       atomic.Uint64
+	hub                *Hub                  // Hubへの参照。クライアントはHubを通じて他のクライアントと通信する。
+	connection         *websocket.Conn       // WebSocket接続。クライアントとの通信に使用される。
+	send               chan WebSocketMessage // 送信キュー。クライアントに送信するメッセージを格納するチャネル。
+	remoteAddr         string                // クライアントのリモートアドレス。接続元のIPアドレスやポート番号を保持する。
+	accountID          int64                 // クライアントのアカウントID。認証されたユーザーの識別子として使用される。
+	loginName          string                // クライアントのログイン名。認証されたユーザーの表示名として使用される。
+	hasMoveState       bool                  // プレイヤーの移動状態を保持するフラグ。初回の移動メッセージを受信したかどうかを示す。
+	lastMoveX          float64               // プレイヤーの最後のX座標。移動メッセージの検証に使用される。
+	lastMoveY          float64               // プレイヤーの最後のY座標。移動メッセージの検証に使用される。
+	lastMoveZ          float64               // プレイヤーの最後のZ座標。移動メッセージの検証に使用される。
+	lastMoveAt         time.Time             // プレイヤーの最後の移動時刻。移動メッセージの検証に使用される。
+	moveTokens         float64
+	moveDistanceCredit float64
+	lastTokenRefillAt  time.Time
+	sendMu             sync.Mutex // 送信チャネルの操作を保護するためのミューテックス。複数のゴルーチンからの同時アクセスを防ぐ。
+	sendClosed         bool       // 送信チャネルが閉じられたかどうかを示すフラグ。チャネルが閉じられた場合、送信操作は行わない。
+	diagSequence       uint64     // Only the Hub writes this field.
+	diagStats          wsDiagnosticCounters
+}
+
+// sendSafelyは、クライアントにメッセージを送信する際に、送信チャネルが閉じられていないかを確認し、安全に送信を行います。
+func (client *Client) sendSafely(
+	message WebSocketMessage,
+) bool {
+	client.sendMu.Lock()
+	defer client.sendMu.Unlock()
+
+	if client.sendClosed {
+		return false
+	}
+
+	select {
+	case client.send <- message:
+		return true
+	default:
+		return false
+	}
+}
+
+// closeSendは、クライアントの送信チャネルを閉じるためのメソッドです。送信チャネルがすでに閉じられている場合は何も行いません。
+func (client *Client) closeSend() {
+	client.sendMu.Lock()
+	defer client.sendMu.Unlock()
+
+	if client.sendClosed {
+		return
+	}
+
+	client.sendClosed = true
+	close(client.send)
+	client.closeMoves()
+}
+
+// 定数の定義
+const (
+	maxPlayerCoordinate = 1000.0                // プレイヤーの座標の最大値。これを超える座標は無効とする。
+	maxPlayerSpeed      = 8.0                   // プレイヤーの最大移動速度（単位: メートル/秒）。これを超える移動は無効とする。
+	minMoveInterval     = 50 * time.Millisecond // プレイヤーの移動メッセージの最小間隔。これを下回る間隔での移動は無効とする。
+	pongWait            = 60 * time.Second      // Pongメッセージの待機時間。これを超えると接続が切断される。
+	pingPeriod          = 30 * time.Second      // Pingメッセージの送信間隔。これにより接続が生きているかを確認する。
+	writeWait           = 10 * time.Second      // WebSocketへの書き込みのタイムアウト時間。これを超えると書き込みが失敗する。
+)
+
+// isFiniteNumberは、与えられた浮動小数点数が有限の数値であるかどうかを判定する関数です。NaNや無限大の場合はfalseを返します。
+func isFiniteNumber(value float64) bool {
+	return !math.IsNaN(value) &&
+		!math.IsInf(value, 0)
+}
+
+// validatePlayerMoveは、クライアントの移動メッセージが有効かどうかを検証するメソッドです。座標の範囲や移動速度などをチェックします。
+
+func (client *Client) validatePlayerMove(
+	message WebSocketMessage,
+) bool {
+	const (
+		maxBurstMoves     = 12.0
+		movementTolerance = 0.5
+		maxBurstSeconds   = 0.5
+	)
+
+	// 数値と座標の検証
+	if !isFiniteNumber(message.X) ||
+		!isFiniteNumber(message.Y) ||
+		!isFiniteNumber(message.Z) ||
+		!isFiniteNumber(message.RotationY) {
+		return false
+	}
+
+	if math.Abs(message.X) > maxPlayerCoordinate ||
+		math.Abs(message.Y) > maxPlayerCoordinate ||
+		math.Abs(message.Z) > maxPlayerCoordinate {
+		return false
+	}
+
+	now := time.Now()
+
+	// 初回移動を基準位置とする
+	if !client.hasMoveState {
+		client.hasMoveState = true
+		client.lastMoveX = message.X
+		client.lastMoveY = message.Y
+		client.lastMoveZ = message.Z
+		client.lastMoveAt = now
+
+		client.moveTokens = maxBurstMoves - 1.0
+		client.moveDistanceCredit = movementTolerance
+		client.lastTokenRefillAt = now
+
+		return true
+	}
+
+	// サーバー時刻だけを使って許可量を回復する
+	seconds := now.Sub(client.lastTokenRefillAt).Seconds()
+	if seconds < 0 {
+		seconds = 0
+	}
+
+	client.moveTokens = math.Min(
+		maxBurstMoves,
+		client.moveTokens+seconds/minMoveInterval.Seconds(),
+	)
+
+	// 距離の許可量も経過時間に応じて回復する
+	// 長時間の停止後でも無制限には蓄積しない
+	maxDistanceCredit := maxPlayerSpeed*maxBurstSeconds +
+		movementTolerance
+
+	client.moveDistanceCredit = math.Min(
+		maxDistanceCredit,
+		client.moveDistanceCredit+maxPlayerSpeed*seconds,
+	)
+
+	client.lastTokenRefillAt = now
+
+	// 回数制限
+	if client.moveTokens < 1.0 {
+		log.Printf(
+			"player.move rejected: reason=rate_limited account_id=%d tokens=%.2f sent_at=%s server_at=%s",
+			client.accountID,
+			client.moveTokens,
+			message.SentAt,
+			now.UTC().Format(time.RFC3339Nano),
+		)
+		return false
+	}
+
+	// 移動距離を計算
+	deltaX := message.X - client.lastMoveX
+	deltaY := message.Y - client.lastMoveY
+	deltaZ := message.Z - client.lastMoveZ
+
+	distance := math.Sqrt(
+		deltaX*deltaX +
+			deltaY*deltaY +
+			deltaZ*deltaZ,
+	)
+
+	// 累積移動距離をサーバー時刻ベースで制限
+	if distance > client.moveDistanceCredit {
+		log.Printf(
+			"player.move rejected: reason=too_fast account_id=%d distance=%.3f credit=%.3f",
+			client.accountID,
+			distance,
+			client.moveDistanceCredit,
+		)
+		return false
+	}
+
+	// 全検証を通過してから許可量を消費
+	client.moveTokens -= 1.0
+	client.moveDistanceCredit -= distance
+
+	client.lastMoveX = message.X
+	client.lastMoveY = message.Y
+	client.lastMoveZ = message.Z
+	client.lastMoveAt = now
+
+	return true
+}
+
+// Hubは、WebSocketクライアントの管理を行う構造体です。クライアントの登録・解除、メッセージのブロードキャストなどを担当します。
+type Hub struct {
+	rooms                 map[string]*gameRoom
+	roomRequests          chan roomRequest
+	diagBroadcastSequence uint64
+	clients               map[*Client]bool
+	register              chan *Client
+	unregister            chan *Client
+	broadcast             chan WebSocketMessage
+}
+
+// newHubは、新しいHubインスタンスを作成する関数です。クライアントのマップやチャネルを初期化します。
+func newHub() *Hub {
+	return &Hub{
+		clients:      make(map[*Client]bool),
+		rooms:        make(map[string]*gameRoom),
+		roomRequests: make(chan roomRequest, 64),
+		register:     make(chan *Client),
+		unregister:   make(chan *Client),
+		broadcast:    make(chan WebSocketMessage),
+	}
+}
+
+// websocketHubは、グローバルなHubインスタンスです。すべてのWebSocketクライアントはこのHubを通じて管理されます。
+var websocketHub = newHub()
+
+// runは、Hubのメインループを実行するメソッドです。クライアントの登録・解除やメッセージのブロードキャストを処理します。
+func (hub *Hub) run() {
+	roomTicker := time.NewTicker(100 * time.Millisecond)
+	defer roomTicker.Stop()
+	for {
+		select {
+		case now := <-roomTicker.C:
+			hub.tickRooms(now)
+		case req := <-hub.roomRequests:
+			hub.handleRoom(req, time.Now())
+		case client := <-hub.register:
+			registerStart := time.Now()
+
+			// すでに接続しているプレイヤーを			// すでに接続しているプレイヤーを
+			// 新しく入ってきたクライアントへ通知する。
+			for existingClient := range hub.clients {
+				if client.roomsMode || existingClient.roomsMode {
+					continue
+				}
+				client.send <- WebSocketMessage{
+					Type:      "player.join",
+					AccountID: existingClient.accountID,
+					LoginName: existingClient.loginName,
+					SentAt: time.Now().
+						UTC().
+						Format(time.RFC3339),
+				}
+			}
+
+			hub.clients[client] = true
+			if client.roomsMode {
+				client.roomCommandTokens = 12
+				client.roomCommandAt = time.Now()
+				hub.roomList(client)
+			}
+			if wsDiagnosticsEnabled {
+				wsDiagnosticClients.Store(client, true)
+			}
+
+			registerDuration := time.Since(registerStart)
+
+			if registerDuration >= 50*time.Millisecond {
+				log.Printf(
+					"websocket register_slow: account_id=%d duration_ms=%.2f total=%d",
+					client.accountID,
+					float64(registerDuration)/float64(time.Millisecond),
+					len(hub.clients),
+				)
+			}
+
+			log.Printf(
+				"websocket client registered: remote=%s total=%d",
+				client.remoteAddr,
+				len(hub.clients),
+			)
+
+		// クライアントの登録解除処理。Hubからクライアントを削除し、送信チャネルを閉じる。
+		case client := <-hub.unregister:
+			if _, exists := hub.clients[client]; exists {
+				if client.roomsMode {
+					hub.leaveRoom(client, time.Now())
+				}
+				delete(hub.clients, client)
+				client.closeSend()
+				log.Printf(
+					"websocket client unregistered: remote=%s total=%d",
+					client.remoteAddr,
+					len(hub.clients),
+				)
+			}
+
+			// ブロードキャストメッセージの処理。Hubに登録されているすべてのクライアントにメッセージを送信する。
+		case message := <-hub.broadcast:
+			if wsDiagnosticsEnabled && message.Type == "player.move" {
+				hub.diagBroadcastSequence++
+				if hub.diagBroadcastSequence%64 == 0 {
+					message.DiagHubUnixMS = time.Now().UnixMilli()
+				}
+			}
+			// 送信先ごとではなく、メッセージごとに1回だけJSON変換する。
+			payload, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("websocket broadcast marshal failed: %v", err)
+				continue
+			}
+
+			message.encoded = payload
+
+			for client := range hub.clients {
+				if client.roomsMode {
+					continue
+				}
+				queuedMessage := message
+				if wsDiagnosticsEnabled && message.Type == "player.move" {
+					client.diagSequence++
+					if client.diagSequence%wsDiagnosticSampleEvery == 0 {
+						queuedMessage.diagQueuedAt = time.Now()
+					}
+				}
+				if message.Type == "player.move" {
+					client.enqueueMove(queuedMessage)
+					continue
+				}
+				if message.Type == "player.leave" {
+					client.discardMove(message.AccountID)
+				}
+				select {
+				case client.send <- queuedMessage:
+
+				default:
+					// 送信キューが詰まったクライアントは
+					// Hubから外して接続を閉じる。
+					delete(hub.clients, client)
+
+					log.Printf(
+						"websocket send_queue_full: account_id=%d queue=%d/%d total_clients=%d message_type=%s",
+						client.accountID,
+						len(client.send),
+						cap(client.send),
+						len(hub.clients),
+						message.Type,
+					)
+
+					client.closeSend()
+					if err := client.connection.Close(); err != nil {
+						log.Println(
+							"websocket close failed:",
+							err,
+						)
+					}
+				}
+			}
+		}
+	}
+}
+
+// websocketUpgraderは、WebSocket接続のアップグレードを行うための設定を持つ構造体です。バッファサイズやオリジンチェックなどを設定します。
+var websocketUpgrader = websocket.Upgrader{
+	HandshakeTimeout: 5 * time.Second,
+	ReadBufferSize:   1024,
+	WriteBufferSize:  1024,
+
+	// Unity Editor・Windowsアプリからの接続確認用。
+	// 公開時は接続元を制限する。
+	CheckOrigin: func(r *http.Request) bool {
+		return allowedExhibitionOrigin(r)
+	},
+}
+
+// websocketHandlerは、WebSocket接続のハンドラ関数です。クライアントの認証、接続のアップグレード、クライアントの登録などを行います。
+// GET /ws
+func websocketHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	sessionToken :=
+		strings.TrimSpace(
+			r.URL.Query().Get("token"),
+		)
+
+	if sessionToken == "" {
+		http.Error(
+			w,
+			"unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	accountAdmission.RLock()
+	admissionLocked := true
+	defer func() {
+		if admissionLocked {
+			accountAdmission.RUnlock()
+		}
+	}()
+	accountID, loginName, err :=
+		validateSessionToken(sessionToken)
+
+	// 認証に失敗した場合は、ログに記録してHTTP 401 Unauthorizedを返す。
+	if err != nil {
+		log.Printf(
+			"websocket authentication failed: remote=%s error=%v",
+			r.RemoteAddr,
+			err,
+		)
+
+		http.Error(
+			w,
+			"unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	// WebSocket接続のアップグレードを試みる。失敗した場合は、ログに記録して処理を終了する。
+	if !tryReserveExhibitionSlot() {
+		http.Error(w, "server is full; please retry later", http.StatusServiceUnavailable)
+		return
+	}
+	defer releaseExhibitionSlot()
+	connection, err := websocketUpgrader.Upgrade(
+		w,
+		r,
+		nil,
+	)
+
+	// 接続のアップグレードに失敗した場合は、ログに記録して処理を終了する。
+	if err != nil {
+		log.Println(
+			"websocket upgrade failed:",
+			err,
+		)
+		return
+	}
+
+	connection.SetReadLimit(8 * 1024)
+	client := &Client{
+		hub:        websocketHub,
+		roomsMode:  r.URL.Query().Get("rooms") == "1",
+		connection: connection,
+		send:       make(chan WebSocketMessage, 256),
+		moveWake:   make(chan struct{}, 1),
+		remoteAddr: r.RemoteAddr,
+		accountID:  accountID,
+		loginName:  loginName,
+	}
+
+	log.Printf(
+		"websocket authenticated: remote=%s account_id=%d login_name=%s",
+		client.remoteAddr,
+		client.accountID,
+		client.loginName,
+	)
+
+	mmoAdmin.add(client, time.Now().UTC())
+	accountAdmission.RUnlock()
+	admissionLocked = false
+	client.hub.register <- client
+
+	go client.writePump()
+
+	if !client.roomsMode {
+		client.hub.broadcast <- WebSocketMessage{
+			Type:      "player.join",
+			AccountID: client.accountID,
+			LoginName: client.loginName,
+			SentAt: time.Now().
+				UTC().
+				Format(time.RFC3339),
+		}
+
+	}
+
+	connectedMessage := WebSocketMessage{
+		Type:    "connected",
+		Message: "websocket connected",
+		SentAt: time.Now().
+			UTC().
+			Format(time.RFC3339),
+	}
+
+	client.sendSafely(connectedMessage)
+	// この処理は切断されるまで継続する。
+	client.readPump()
+}
+
+// readPumpは、クライアントからのメッセージを受信するためのメソッドです。接続が切断されるまでループし、受信したメッセージを処理します。
+func (client *Client) readPump() {
+	mmoAdmin.add(client, time.Now().UTC())
+	defer mmoAdmin.remove(client)
+	defer func() {
+		client.hub.unregister <- client
+
+		if !client.roomsMode {
+			client.hub.broadcast <- WebSocketMessage{
+				Type:      "player.leave",
+				AccountID: client.accountID,
+				LoginName: client.loginName,
+				SentAt: time.Now().
+					UTC().
+					Format(time.RFC3339),
+			}
+		}
+
+		if err := client.connection.Close(); err != nil {
+			log.Println(
+				"websocket close failed:",
+				err,
+			)
+		}
+
+		log.Printf(
+			"websocket disconnected: remote=%s",
+			client.remoteAddr,
+		)
+	}()
+
+	client.connection.SetReadDeadline(
+		time.Now().Add(pongWait),
+	)
+
+	// Pongメッセージを受信した際に呼び出されるハンドラを設定する。Pongを受信したら、読み取りのタイムアウトを延長する。
+	client.connection.SetPongHandler(
+		func(string) error {
+			mmoAdmin.touch(client, time.Now().UTC())
+			client.connection.SetReadDeadline(
+				time.Now().Add(pongWait),
+			)
+
+			return nil
+		},
+	)
+
+	// クライアントからのメッセージを受信するループ。接続が切断されるまで継続する。
+	for {
+		var receivedMessage WebSocketMessage
+
+		err := client.connection.ReadJSON(
+			&receivedMessage,
+		)
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(
+				err,
+				websocket.CloseNormalClosure,
+				websocket.CloseGoingAway,
+			) {
+				log.Println(
+					"websocket read failed:",
+					err,
+				)
+			}
+
+			return
+		}
+
+		if receivedMessage.Type == "player.move" && receivedMessage.SentAt != "" {
+			sentAt, err := time.Parse(time.RFC3339Nano, receivedMessage.SentAt)
+			if err == nil {
+				receivedAt := time.Now().UTC()
+				lag := receivedAt.Sub(sentAt)
+
+				if lag >= 150*time.Millisecond {
+					log.Printf(
+						"player.move read_lag: account_id=%d lag_ms=%.2f sent_at=%s received_at=%s",
+						client.accountID,
+						float64(lag)/float64(time.Millisecond),
+						receivedMessage.SentAt,
+						receivedAt.Format(time.RFC3339Nano),
+					)
+				}
+			}
+		}
+
+		mmoAdmin.touch(client, time.Now().UTC())
+		if client.roomsMode {
+			client.hub.roomRequests <- roomRequest{client, receivedMessage}
+			continue
+		}
+		switch receivedMessage.Type {
+
+		// チャットメッセージの処理。メッセージが空でないか、長さが200文字以内かをチェックし、条件を満たす場合はブロードキャストする。
+		case "chat", "chat.send":
+			message :=
+				strings.TrimSpace(
+					receivedMessage.Message,
+				)
+
+			if message == "" {
+				continue
+			}
+
+			if len([]rune(message)) > 200 {
+				client.sendSafely(WebSocketMessage{Type: "error",
+					Message: "message is too long",
+					SentAt: time.Now().
+						UTC().
+						Format(time.RFC3339),
+				})
+				continue
+			}
+
+			mmoAdmin.chat(client, message, time.Now().UTC())
+			client.hub.broadcast <- WebSocketMessage{
+				Type:      "chat.message",
+				AccountID: client.accountID,
+				LoginName: client.loginName,
+				Message:   message,
+				SentAt: time.Now().
+					UTC().
+					Format(time.RFC3339),
+			}
+
+		// プレイヤーの移動メッセージの処理。移動が有効かどうかを検証し、条件を満たす場合はブロードキャストする。
+		case "player.move":
+			if !client.validatePlayerMove(
+				receivedMessage,
+			) {
+				log.Printf(
+					"invalid player move: "+
+						"account_id=%d "+
+						"x=%.3f y=%.3f z=%.3f rotation_y=%.3f",
+					client.accountID,
+					receivedMessage.X,
+					receivedMessage.Y,
+					receivedMessage.Z,
+					receivedMessage.RotationY,
+				)
+
+				client.sendSafely(WebSocketMessage{Type: "error",
+					Message: "invalid player move",
+					SentAt: time.Now().
+						UTC().
+						Format(time.RFC3339),
+				})
+
+				continue
+			}
+
+			mmoAdmin.move(client, receivedMessage, time.Now().UTC())
+			broadcastStart := time.Now()
+
+			client.hub.broadcast <- WebSocketMessage{
+				Type:      "player.move",
+				AccountID: client.accountID,
+				LoginName: client.loginName,
+				X:         receivedMessage.X,
+				Y:         receivedMessage.Y,
+				Z:         receivedMessage.Z,
+				RotationY: receivedMessage.RotationY,
+				SentAt:    time.Now().UTC().Format(time.RFC3339),
+			}
+
+			broadcastWait := time.Since(broadcastStart)
+
+			if broadcastWait >= 50*time.Millisecond {
+				log.Printf(
+					"player.move hub_wait: account_id=%d wait_ms=%.2f",
+					client.accountID,
+					float64(broadcastWait)/float64(time.Millisecond),
+				)
+			}
+
+		default:
+			client.sendSafely(WebSocketMessage{Type: "error",
+				Message: "unsupported message type",
+				SentAt: time.Now().
+					UTC().
+					Format(time.RFC3339),
+			})
+		}
+	}
+}
+
+// writePumpは、クライアントへのメッセージ送信を行うためのメソッドです。送信キューからメッセージを取り出し、WebSocket接続に書き込みます。

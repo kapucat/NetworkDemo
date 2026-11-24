@@ -39,6 +39,11 @@ public class MMOChatUI : MonoBehaviour
 
     public bool IsInputActive { get; private set; }
 
+    public void ClearHistory() {
+        messages.Clear();
+        if (chatLogText != null) chatLogText.text = "";
+        CloseChatInput();
+    }
     private void Awake()
     {
         if (chatLogText != null)

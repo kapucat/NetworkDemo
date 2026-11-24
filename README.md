@@ -1,7 +1,7 @@
 # ネットワークDemo
 
 UnityとGoで制作した、オンライン通信の技術デモです。
-ランキングへの記録送信・取得と、複数プレイヤーの移動同期・チャットを実装しています。
+ランキングへの記録送信・取得と、複数プレイヤーの移動同期・チャット、部屋への参加と全員の準備完了による一斉開始を実装しています。
 
 ## 公開内容
 
@@ -14,7 +14,8 @@ UnityとGoで制作した、オンライン通信の技術デモです。
 | `Assets/ランキングシステムのアクションゲーム/Scripts/` | スコア送信、ランキング表示、アクション操作 |
 | `Assets/大規模多人数同時参加型オンラインゲーム/MMO-Scripts/` | アカウント登録・ログイン、WebSocket通信、移動同期、チャット |
 | `Assets/Common共通/Scripts/` | 共通の画面遷移 |
-| `server/` | Go製API・WebSocketサーバー、PostgreSQL接続 |
+| `server/` | ランキングAPIと従来の共通フィールド用サーバー |
+| `server/mmo/` | 部屋機能・管理機能に対応した現在のMMOサーバー |
 | `server/loadtest/` | k6による負荷試験コードと性能改善の記録 |
 
 ## 使用技術
@@ -24,5 +25,6 @@ UnityとGoで制作した、オンライン通信の技術デモです。
 - PostgreSQL / Docker Compose
 - k6
 
-サーバーのコードは `server/main.go`、`server/accounts.go`、`server/websocket.go` にあります。
+ランキングAPIは `server/main.go`、現在のMMOサーバーは `server/mmo/` にあります。
+部屋機能の操作と通信仕様は [部屋機能の説明](server/mmo/ROOMS.md) を参照してください。
 負荷試験の条件と結果は [負荷試験の説明](server/loadtest/README.md) を参照してください。

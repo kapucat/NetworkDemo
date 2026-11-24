@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +11,49 @@ using UnityEngine.SceneManagement;
 public class MMOWebSocketClient : MonoBehaviour
 {
     private WebSocket websocket;
+    private readonly ConcurrentQueue<Action> roomMainThread = new();
+    private readonly Dictionary<long, string> roomPlayers = new();
+    public MMORoomState Room { get; private set; }
+    public bool CanMove => IsConnected && Room != null && Room.phase == "playing";
+    public event Action<MMORoomPacket> OnRoomMessage;
+    public event Action OnWorldReset;
+
+    private void Awake() {
+        if (GetComponent<MMORoomLobby>() == null) gameObject.AddComponent<MMORoomLobby>();
+    }
+    private void ResetRoom() {
+        Room = null; roomPlayers.Clear(); OnWorldReset?.Invoke();
+        OnRoomMessage?.Invoke(new MMORoomPacket { type = "room.reset" });
+    }
+    public async void SendRoom(string type, string message = null, string roomId = null, bool ready = false) {
+        if (!IsConnected) return;
+        var packet = new MMORoomPacket { type = type, message = message,
+            room_id = roomId ?? Room?.id, ready = ready,
+            client_unix_ms = type == "room.ping" ? (long)(Time.realtimeSinceStartupAsDouble * 1000) : 0 };
+        try { await websocket.SendText(JsonUtility.ToJson(packet)); }
+        catch (Exception) { OnRoomMessage?.Invoke(new MMORoomPacket { type = "room.error", message = "送信できませんでした。接続を確認してください。" }); }
+    }
+    private void ReceiveRoom(MMORoomPacket packet) {
+        if (packet.type == "room.left") {
+            if (Room != null && Room.id == packet.room_id) ResetRoom();
+        }
+        if (packet.type == "room.state" && packet.room != null) {
+            if (Room == null || Room.id != packet.room.id) { roomPlayers.Clear(); OnWorldReset?.Invoke(); }
+            Room = packet.room;
+            var members = new HashSet<long>();
+            foreach (var member in Room.members ?? Array.Empty<MMORoomMember>()) members.Add(member.account_id);
+            foreach (var id in new List<long>(roomPlayers.Keys)) {
+                if (!members.Contains(id)) { OnPlayerLeft?.Invoke(id, roomPlayers[id]); roomPlayers.Remove(id); }
+            }
+            foreach (var member in Room.members ?? Array.Empty<MMORoomMember>()) {
+                if (!roomPlayers.ContainsKey(member.account_id)) {
+                    roomPlayers.Add(member.account_id, member.login_name);
+                    OnPlayerJoined?.Invoke(member.account_id, member.login_name);
+                }
+            }
+        }
+        OnRoomMessage?.Invoke(packet);
+    }
 
     private bool isConnecting;
     private bool reconnectScheduled;
@@ -40,6 +85,7 @@ public class MMOWebSocketClient : MonoBehaviour
     private class WebSocketMessage
     {
         public string type;
+        public string room_id;
         public long account_id;
         public string login_name;
         public string message;
@@ -104,7 +150,7 @@ public class MMOWebSocketClient : MonoBehaviour
                 serverUrl +
                 separator +
                 "token=" +
-                Uri.EscapeDataString(sessionToken);
+                Uri.EscapeDataString(sessionToken) + "&rooms=1";
 
             WebSocket activeSocket =
                 new WebSocket(authenticatedUrl);
@@ -118,6 +164,7 @@ public class MMOWebSocketClient : MonoBehaviour
                     return;
                 }
                 reconnectScheduled = false;
+                roomMainThread.Enqueue(() => { ResetRoom(); SendRoom("room.list"); SendRoom("room.ping"); });
 
             };
 
@@ -132,6 +179,7 @@ public class MMOWebSocketClient : MonoBehaviour
             {
                 if (!ReferenceEquals(websocket, activeSocket) || isShuttingDown) return;
 
+                roomMainThread.Enqueue(ResetRoom);
                 // 1008は管理サーバーからの接続終了。通常の通信断と分ける。
                 if (closeCode == WebSocketCloseCode.PolicyViolation)
                 {
@@ -154,7 +202,7 @@ public class MMOWebSocketClient : MonoBehaviour
             activeSocket.OnMessage += message =>
             {
                 if (ReferenceEquals(websocket, activeSocket) && !isShuttingDown)
-                    HandleWebSocketMessage(message);
+                    roomMainThread.Enqueue(() => HandleWebSocketMessage(message));
             };
 
             await activeSocket.Connect();
@@ -204,6 +252,7 @@ public class MMOWebSocketClient : MonoBehaviour
     // シーン切替とUnityオブジェクトの操作は必ずメインスレッドで行う。
     private void Update()
     {
+        while (roomMainThread.TryDequeue(out var action)) action();
         if (Interlocked.Exchange(ref returnToLoginPending, 0) == 0) return;
 
         if (MMOSession.Instance != null)
@@ -232,6 +281,12 @@ public class MMOWebSocketClient : MonoBehaviour
             }
 
 
+            if (receivedMessage.type != null && receivedMessage.type.StartsWith("room.")) {
+                ReceiveRoom(JsonUtility.FromJson<MMORoomPacket>(json)); return;
+            }
+            if (receivedMessage.type == "player.move" || receivedMessage.type == "chat" || receivedMessage.type == "chat.message") {
+                if (Room == null || receivedMessage.room_id != Room.id) return;
+            }
             if (receivedMessage.type == "player.join")
             {
                 OnPlayerJoined?.Invoke(
@@ -299,6 +354,7 @@ public class MMOWebSocketClient : MonoBehaviour
             new WebSocketMessage
             {
                 type = "chat",
+                room_id = Room?.id,
                 message = message,
                 sent_at = ""
             };
@@ -323,7 +379,7 @@ public class MMOWebSocketClient : MonoBehaviour
         Vector3 position,
         float rotationY)
     {
-        if (!IsConnected)
+        if (!CanMove)
         {
             return;
         }
@@ -332,6 +388,7 @@ public class MMOWebSocketClient : MonoBehaviour
             new WebSocketMessage
             {
                 type = "player.move",
+                room_id = Room?.id,
                 x = position.x,
                 y = position.y,
                 z = position.z,

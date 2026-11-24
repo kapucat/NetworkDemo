@@ -13,7 +13,7 @@ public class MMOLocalPlayerNetworkSync : MonoBehaviour
     private void Update()
     {
         if (webSocketClient == null ||
-            !webSocketClient.IsConnected)
+            !webSocketClient.CanMove)
         {
             return;
         }
