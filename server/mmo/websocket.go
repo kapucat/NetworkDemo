@@ -234,6 +234,7 @@ func (client *Client) validatePlayerMove(
 
 // Hubは、WebSocketクライアントの管理を行う構造体です。クライアントの登録・解除、メッセージのブロードキャストなどを担当します。
 type Hub struct {
+	adminRoomRequests     chan adminRoomRequest
 	rooms                 map[string]*gameRoom
 	roomRequests          chan roomRequest
 	diagBroadcastSequence uint64
@@ -246,12 +247,13 @@ type Hub struct {
 // newHubは、新しいHubインスタンスを作成する関数です。クライアントのマップやチャネルを初期化します。
 func newHub() *Hub {
 	return &Hub{
-		clients:      make(map[*Client]bool),
-		rooms:        make(map[string]*gameRoom),
-		roomRequests: make(chan roomRequest, 64),
-		register:     make(chan *Client),
-		unregister:   make(chan *Client),
-		broadcast:    make(chan WebSocketMessage),
+		adminRoomRequests: make(chan adminRoomRequest),
+		clients:           make(map[*Client]bool),
+		rooms:             make(map[string]*gameRoom),
+		roomRequests:      make(chan roomRequest, 64),
+		register:          make(chan *Client),
+		unregister:        make(chan *Client),
+		broadcast:         make(chan WebSocketMessage),
 	}
 }
 
@@ -266,6 +268,14 @@ func (hub *Hub) run() {
 		select {
 		case now := <-roomTicker.C:
 			hub.tickRooms(now)
+		case req := <-hub.adminRoomRequests:
+			if req.ctx.Err() == nil {
+				snapshot := hub.snapshotRooms(time.Now())
+				select {
+				case req.reply <- snapshot:
+				case <-req.ctx.Done():
+				}
+			}
 		case req := <-hub.roomRequests:
 			hub.handleRoom(req, time.Now())
 		case client := <-hub.register:

@@ -136,6 +136,7 @@ func (m *adminMonitor) handler(w http.ResponseWriter, r *http.Request) {
 func serveMmoAdmin() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/snapshot", mmoAdmin.handler)
+	mux.HandleFunc("/rooms", websocketHub.roomsHandler)
 	mux.HandleFunc("/kick", mmoAdmin.kickHandler)
 	mux.HandleFunc("/kick-status", mmoAdmin.kickHandler)
 	mux.HandleFunc("/accounts", mmoAdmin.accountsHandler)
@@ -152,6 +153,8 @@ func adminSnapshotCommand() bool {
 	}
 	path := ""
 	switch os.Args[1] {
+	case "--admin-rooms":
+		path = "/rooms"
 	case "--admin-snapshot":
 		path = "/snapshot"
 	case "--admin-kick":
@@ -166,7 +169,7 @@ func adminSnapshotCommand() bool {
 	client := http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{Proxy: nil}}
 	var r *http.Response
 	var err error
-	if path == "/snapshot" {
+	if path == "/snapshot" || path == "/rooms" {
 		r, err = client.Get("http://127.0.0.1:8091" + path)
 	} else {
 		body, readErr := io.ReadAll(io.LimitReader(os.Stdin, 65537))

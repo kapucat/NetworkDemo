@@ -98,6 +98,7 @@ func TestLiveRoomProtocol(t *testing.T) {
 	b.wait(t, "room.state")
 	c.send(t, WebSocketMessage{Type: "room.create", Message: "公開確認B"})
 	idB := c.wait(t, "room.state").Room.ID
+	captureAdminRoom(t, id, "waiting", 2)
 	for _, s := range []roomSocket{a, b} {
 		s.send(t, WebSocketMessage{Type: "room.ready", RoomID: id, Ready: true})
 	}
@@ -123,6 +124,7 @@ func TestLiveRoomProtocol(t *testing.T) {
 			break
 		}
 	}
+	captureAdminRoom(t, id, "playing", 2)
 	a.send(t, WebSocketMessage{Type: "chat", RoomID: id, Message: "room A chat"})
 	b.wait(t, "chat.message")
 	a.send(t, WebSocketMessage{Type: "player.move", RoomID: id, X: 1, Y: 0, Z: 1})
@@ -150,6 +152,7 @@ func TestLiveRoomProtocol(t *testing.T) {
 	if b.wait(t, "room.state").Room.ID != idB {
 		t.Fatal("room switch failed")
 	}
+	captureAdminRoom(t, idB, "waiting", 2)
 	for _, s := range []roomSocket{b, c} {
 		s.send(t, WebSocketMessage{Type: "room.ready", RoomID: idB, Ready: true})
 	}
@@ -165,5 +168,6 @@ func TestLiveRoomProtocol(t *testing.T) {
 			break
 		}
 	}
+	captureAdminRoom(t, idB, "waiting", 1)
 	t.Log("Public HTTPS login / WSS rooms / readiness cancellation / synchronized start / scoped chat & movement / legacy compatibility / room switching / disconnect cancellation passed")
 }
